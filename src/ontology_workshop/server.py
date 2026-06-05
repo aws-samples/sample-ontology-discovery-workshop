@@ -395,8 +395,9 @@ class ReportIn(BaseModel):
     open_issues: list[str] | None = None
     # 한글 식별자 → 영문 구현 스키마 매핑(개발자용 §9 인계서·Neptune 익스포트에만 적용)
     schema_map: dict | None = None
-    # GATE 2 데이터 현황 분류 {"<요소>": {"kind","status","where","note"}}.
-    # status: 보유|부분보유|미보유|파생|모름. '모름'은 보고서에서 고객 이메일 회신 액션이 됨.
+    # Gate 2 data status: {"<element>": {"kind","status","where","note"}}.
+    # Accepted status aliases include available, partial, missing, derived, unknown.
+    # They are normalized during report generation for localized display/action items.
     data_status: dict | None = None
     action_items: dict | None = None  # {"customer":[...],"us":[...]}
     # 보고서/스냅샷 UI 언어(ko|en|ja). 엔터티·데이터 라벨은 고객 도메인이라 번역하지 않음.

@@ -257,6 +257,51 @@ def migration_plan_section(g: OntologyGraph, lang: str | None = None) -> str:
 # 8) 데이터 준비 상태
 # ---------------------------------------------------------------------------
 _STATUS_ORDER = ["보유", "부분보유", "미보유", "파생", "모름"]
+_STATUS_ALIASES = {
+    "보유": "보유",
+    "available": "보유",
+    "avail": "보유",
+    "have": "보유",
+    "yes": "보유",
+    "保有": "보유",
+    "부분보유": "부분보유",
+    "partial": "부분보유",
+    "partially_available": "부분보유",
+    "partially available": "부분보유",
+    "一部保有": "부분보유",
+    "미보유": "미보유",
+    "missing": "미보유",
+    "not_available": "미보유",
+    "not available": "미보유",
+    "none": "미보유",
+    "未保有": "미보유",
+    "파생": "파생",
+    "derived": "파생",
+    "computed": "파생",
+    "calculated": "파생",
+    "派生": "파생",
+    "모름": "모름",
+    "unknown": "모름",
+    "unsure": "모름",
+    "unclear": "모름",
+    "不明": "모름",
+}
+
+
+def _canonical_status(status: object) -> str:
+    raw = str(status or "unknown").strip()
+    key = raw.lower()
+    return (_STATUS_ALIASES.get(raw) or _STATUS_ALIASES.get(key) or
+            _STATUS_ALIASES.get(key.replace("-", "_")) or "모름")
+
+
+def _normalized_data_status(data_status: dict) -> dict:
+    out = {}
+    for name, d in data_status.items():
+        row = dict(d or {})
+        row["status"] = _canonical_status(row.get("status"))
+        out[name] = row
+    return out
 
 
 def _action_items_block(data_status: dict, action_items: dict | None,
@@ -266,7 +311,7 @@ def _action_items_block(data_status: dict, action_items: dict | None,
     S = i18n.strings(lang)
     cust, ours = [], []
     for name, d in data_status.items():
-        st = (d or {}).get("status", "모름")
+        st = _canonical_status((d or {}).get("status"))
         if st == "모름":
             cust.append(S["ai_unknown"].format(name=name))
         elif st == "미보유":
@@ -279,7 +324,8 @@ def _action_items_block(data_status: dict, action_items: dict | None,
         ours += list(action_items.get("us", []))
 
     out = ["", S["ai_h"], ""]
-    has_unknown = any((d or {}).get("status") in ("모름", "미보유", "부분보유")
+    has_unknown = any(_canonical_status((d or {}).get("status"))
+                      in ("모름", "미보유", "부분보유")
                       for d in data_status.values())
     if has_unknown:
         out.append(S["ai_quote"])
@@ -297,15 +343,15 @@ def data_readiness_section(g: OntologyGraph, gate_data: dict | None = None,
     stl = i18n.STATUS_LABEL[i18n.lang_of(lang)]
     knd = i18n.KIND_LABEL[i18n.lang_of(lang)]
     gate_data = gate_data or {}
-    data_status = gate_data.get("data_status") or {}
+    data_status = _normalized_data_status(gate_data.get("data_status") or {})
     action_items = gate_data.get("action_items")
 
     # GATE 2 실제 분류가 들어온 경우: 보유/부분보유/미보유/파생/모름 표 + 액션 아이템
     if data_status:
         counts = {s: 0 for s in _STATUS_ORDER}
         for d in data_status.values():
-            counts[(d or {}).get("status", "모름")] = \
-                counts.get((d or {}).get("status", "모름"), 0) + 1
+            st = _canonical_status((d or {}).get("status"))
+            counts[st] = counts.get(st, 0) + 1
         total = len(data_status) or 1
         summary = " · ".join(f"{stl[s]} {counts[s]}"
                              for s in _STATUS_ORDER if counts.get(s))
@@ -320,10 +366,11 @@ def data_readiness_section(g: OntologyGraph, gate_data: dict | None = None,
         ]
         order = {s: i for i, s in enumerate(_STATUS_ORDER)}
         for name, d in sorted(data_status.items(),
-                              key=lambda kv: order.get((kv[1] or {}).get("status"), 9)):
+                              key=lambda kv: order.get(_canonical_status(
+                                  (kv[1] or {}).get("status")), 9)):
             d = d or {}
             kind = knd["relation"] if d.get("kind") == "relation" else knd["entity"]
-            st = d.get("status", "모름")
+            st = _canonical_status(d.get("status"))
             where = d.get("where") or d.get("note") or \
                 (S["s8_await"] if st == "모름" else S["s8_dash"])
             lines.append(f"| {name} | {kind} | {stl.get(st, st)} | {where} |")

@@ -15,10 +15,10 @@ Finalize a workshop, verify gates, and generate report plus Neptune export artif
 2. Check and report the required gate status:
    - Modeling complete: entity types, relation types, instances, and edges exist.
    - Gate 1: every customer question has a verified openCypher query and focus metadata.
-   - Gate 2: every entity/relation/data element has `보유`, `부분보유`, `미보유`, `파생(계산)`, or `모름`.
+   - Gate 2: every entity/relation/data element has `available`, `partial`, `missing`, `derived`, or `unknown` status.
    - Gate 3: every available or partial data element has source/location/owner, and every missing element has an acquisition plan.
 3. If any gate is incomplete, stop and ask for the missing input instead of exporting.
-4. Build `/export/report` payload with Korean `descriptions`, `data_status`, and `action_items` unless the user selected `en` or `ja`.
+4. Build `/export/report` payload with `descriptions`, `data_status`, and `action_items` in the user's selected language. Include `"lang":"ko|en|ja"` when the selected language is supported.
 5. Generate deliverables:
    ```bash
    curl -s -X POST http://localhost:8000/export/report -H 'Content-Type: application/json' -d @/tmp/ontoforge-report.json
@@ -34,4 +34,4 @@ Finalize a workshop, verify gates, and generate report plus Neptune export artif
 
 - Do not say the workshop is complete until the checklist has no unresolved model gaps.
 - If unresolved data gaps remain by design, include them as customer action items in the report.
-- Customer-facing report text is Korean by default.
+- Customer-facing report text follows the user's selected language; if unclear, ask once before export.
