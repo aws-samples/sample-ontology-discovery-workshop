@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.DS_Store
+workshop.kuzu
+workshop.kuzu.wal
+*.kuzu
+*.kuzu.wal
+exports/
+.venv/
+*.egg-info/
+.claude/settings.local.json

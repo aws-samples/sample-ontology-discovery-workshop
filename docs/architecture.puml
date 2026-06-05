@@ -1,0 +1,44 @@
+@startuml
+title OntoForge Local Workshop Architecture
+
+actor "Operator / Claude Code" as Operator
+actor "Browser viewer" as Browser
+rectangle "Local workstation" {
+  component "FastAPI server\nontology_workshop.server" as API
+  database "Kuzu embedded graph\nworkshop.kuzu" as Kuzu
+  component "Skill engine\nClaude API or offline rules" as Skills
+  component "Report/export pipeline" as Export
+  folder "exports/\nreports, snapshots, CSV" as Files
+}
+cloud "Anthropic Claude API\noptional external call" as Claude
+cloud "Amazon Neptune target\nfuture deployment" as Neptune
+cloud "S3 bulk-load bucket\nfuture deployment" as S3
+
+Operator --> API : REST JSON\n/entity /relation /query
+API --> Kuzu : validated openCypher\nread-only user queries
+API --> Browser : WebSocket graph updates\noptional token auth
+Browser --> API : local HTTPS/HTTP\nstatic UI + commands
+API --> Skills : /skill execution
+Skills --> Claude : HTTPS only\nANTHROPIC_API_KEY
+API --> Export : report / snapshot / Neptune export
+Export --> Files : constrained to ./exports\n0600 permissions
+Files --> S3 : operator upload\nSSE-KMS + HTTPS-only
+S3 --> Neptune : Bulk Loader IAM role
+
+note right of API
+Security boundary:
+- local-only by default
+- loopback access allowed without token
+- ONTOFORGE_TOKEN gates non-loopback clients
+- strict identifier validation
+- read-only user Cypher
+end note
+
+note right of Neptune
+Production guidance:
+- private subnets
+- AWS KMS encryption
+- IAM database auth
+- audit logs
+end note
+@enduml

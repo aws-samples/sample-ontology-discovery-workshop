@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OntoForge — 온톨로지 디스커버리 워크샵</title>
+<script src="/static/vendor/cytoscape-3.30.2.min.js"></script>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#121a24; --line:#1f2b3a; --ink:#e8eef6;
+    --muted:#7d8da3; --accent:#34d3a6; --accent2:#5aa9ff; --warn:#f7b955;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:var(--mono);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  header{display:flex;align-items:center;flex-wrap:wrap;gap:14px;padding:12px 18px;
+    border-bottom:1px solid var(--line);background:linear-gradient(180deg,#10202b,#0d1117)}
+  header .logo{font-weight:700;letter-spacing:.5px;font-size:15px}
+  header .logo b{color:var(--accent)}
+  header .status{margin-left:auto;font-size:12px;color:var(--muted)}
+  header .dot{display:inline-block;width:8px;height:8px;border-radius:50%;
+    background:#555;margin-right:6px;vertical-align:middle}
+  header .dot.on{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+  header .tools{display:flex;gap:8px;margin-left:18px}
+  header .tools button{background:#0f1620;border:1px solid var(--line);color:var(--muted);
+    font-size:11px;padding:5px 10px;border-radius:7px;cursor:pointer;font-family:var(--mono);
+    white-space:nowrap;flex:0 0 auto}
+  header .tools button:hover{border-color:var(--accent2);color:var(--ink)}
+  header .tools button.on{border-color:var(--accent);color:var(--accent)}
+  header .tools .lang-dd{position:relative;align-self:center}
+  header .tools .lang-dd>button.trigger{display:inline-flex;align-items:center;gap:5px;
+    font-weight:700}
+  header .tools .lang-dd .menu{position:absolute;top:calc(100% + 6px);right:0;z-index:60;
+    display:none;flex-direction:column;min-width:128px;background:#0f1620;
+    border:1px solid var(--line);border-radius:8px;overflow:hidden;
+    box-shadow:0 8px 24px rgba(0,0,0,.45)}
+  header .tools .lang-dd.open .menu{display:flex}
+  header .tools .lang-dd .menu button{border:none;border-radius:0;text-align:left;
+    padding:9px 12px;font-size:12px;font-weight:600;color:var(--muted);background:transparent}
+  header .tools .lang-dd .menu button:hover{background:#16212e;color:var(--ink)}
+  header .tools .lang-dd .menu button.on{background:var(--accent);color:#05130d}
+
+  .wrap{flex:1;display:grid;grid-template-columns:400px 1fr 280px;min-height:0;
+    transition:grid-template-columns .18s ease}
+  /* 그리드 아이템이 0폭 트랙으로 줄어들 수 있게 + 접힘 시 내용 클립 */
+  .feed-col,.center,.right{min-width:0}
+  .panel-hidden{overflow:hidden !important;border:0 !important}
+
+  /* ---- 좌측: 진행 피드 ---- */
+  .feed-col{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  .feed-head{padding:13px 16px;border-bottom:1px solid var(--line)}
+  .feed-head .t{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+  .feed-head .s{font-size:10px;color:#5a6b80;margin-top:3px}
+  #feed{flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+  .empty{color:#566;font-size:12px;text-align:center;margin-top:40px;line-height:1.7}
+
+  .item{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#0f1620;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .item .meta{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--muted);margin-bottom:6px}
+  .item .meta .ts{margin-left:auto}
+  .item .body{font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+  .item code{background:#1a2533;padding:1px 5px;border-radius:4px;font-size:11px}
+  .item pre{background:#0a0f16;border:1px solid var(--line);border-radius:6px;padding:8px;
+    font-size:11px;overflow:auto;margin:6px 0;color:#bcd}
+  .tag{font-size:9px;padding:2px 7px;border-radius:20px;border:1px solid var(--line);text-transform:uppercase;letter-spacing:.5px}
+
+  /* kind 별 색 */
+  .k-reflect{border-left:3px solid var(--accent)} .k-reflect .tag{color:var(--accent);border-color:#1d5e4c}
+  .k-qa{border-left:3px solid var(--accent2)}      .k-qa .tag{color:var(--accent2);border-color:#274a6e}
+  .k-chat{border-left:3px solid #6b7a90}
+  .k-note,.k-system{border-left:3px solid var(--warn);background:#181410}
+  .k-note .tag,.k-system .tag{color:var(--warn);border-color:#5e4a1d}
+  .role-customer{color:#ffd9a8} .role-operator{color:#a8d4ff} .role-agent{color:var(--accent)}
+  .qa-res{margin-top:6px;font-size:11px}
+  .qa-res .cnt{color:var(--accent);font-weight:700;margin-bottom:4px}
+  .qa-res .row{background:#0a0f16;border:1px solid var(--line);border-radius:5px;padding:4px 7px;margin-bottom:3px;word-break:break-all}
+
+  /* ---- 가운데: 그래프 ---- */
+  #cy{width:100%;height:100%}
+  .center{position:relative;min-height:0}
+  .toggle{position:absolute;top:12px;left:12px;z-index:5;display:flex;
+    background:#0f1620;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .toggle button{background:none;border:none;color:var(--muted);
+    padding:7px 14px;cursor:pointer;font-family:var(--mono);font-size:12px}
+  .toggle button.active{background:var(--accent);color:#05130d;font-weight:700}
+  .focusbar{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:6;
+    display:none;align-items:center;gap:10px;background:#0f1f1a;border:1px solid #1d5e4c;
+    border-radius:8px;padding:7px 12px;box-shadow:0 4px 18px rgba(0,0,0,.4)}
+  .focusbar.on{display:flex}
+  .focusbar .fb-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+  .focusbar .fb-label{font-size:12px;color:var(--ink)}
+  .focusbar button{background:none;border:1px solid #1d5e4c;color:var(--accent);
+    font-size:11px;padding:3px 9px;border-radius:6px;cursor:pointer;font-family:var(--mono)}
+  .focusbar button:hover{background:#13352b}
+  /* QA 카드의 그래프 투영 버튼 */
+  .qa-focus-btn{margin-top:8px;background:#0f1f1a;border:1px solid #1d5e4c;color:var(--accent);
+    font-size:11px;padding:5px 11px;border-radius:7px;cursor:pointer;font-family:var(--mono)}
+  .qa-focus-btn:hover{background:#13352b}
+
+  /* ---- 우측: 스키마 요약 ---- */
+  .right{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow:auto}
+  .right .sec{padding:14px 16px;border-bottom:1px solid var(--line)}
+  .right h3{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:0 0 9px}
+  .stat{display:flex;justify-content:space-between;font-size:12px;margin:4px 0}
+  .stat b{color:var(--accent)}
+  .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;
+    border:1px solid var(--line);margin:0 4px 5px 0;color:var(--ink);background:#0f1620}
+  .pill.r{border-color:#274a6e;color:var(--accent2)}
+  .dotc{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+  .inspector{font-size:12px;color:var(--muted);line-height:1.6}
+  .inspector b{color:var(--ink)}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Onto<b>Forge</b> · <span data-i18n="subtitle">온톨로지 디스커버리 워크샵</span></div>
+  <div class="tools">
+    <button id="btnLeft" onclick="togglePanel('left')" data-i18n="btnFeed" data-i18n-title="ttFeed" title="대화 피드 접기/펴기">◧ 대화</button>
+    <button id="btnRight" onclick="togglePanel('right')" data-i18n="btnState" data-i18n-title="ttState" title="상태창 접기/펴기">상태 ◨</button>
+    <span style="width:1px;background:var(--line);align-self:stretch"></span>
+    <!--SRVBTNS-->
+    <button onclick="resetGraph()" data-i18n="btnReset" data-i18n-title="ttReset" title="백지에서 시작">⟲ <span data-i18n="btnResetT">백지</span></button>
+    <button onclick="exportReport()" data-i18n-title="ttReport" title="보고서 생성 후 새 탭에서 열기">📄 <span data-i18n="btnReport">보고서</span></button>
+    <button onclick="openSnapshot()" data-i18n-title="ttSnap" title="대화·그래프·상태를 담은 단독 실행 HTML 열기">🖥 <span data-i18n="btnSnap">스냅샷</span></button>
+    <button onclick="downloadZip()" data-i18n-title="ttZip" title="보고서+스냅샷+Neptune 묶음 ZIP 다운로드">⬇ ZIP</button>
+    <button onclick="exportNeptune()" data-i18n-title="ttNeptune" title="Neptune 익스포트">⤓ Neptune</button>
+    <!--/SRVBTNS-->
+    <span style="width:1px;background:var(--line);align-self:stretch"></span>
+    <span class="lang-dd" id="langDd">
+      <button class="trigger" onclick="toggleLangMenu(event)" title="언어 / Language / 言語">🌐 <span id="langCur">KO</span> ▾</button>
+      <span class="menu">
+        <button id="lgko" onclick="setLang('ko')">한국어 · KO</button>
+        <button id="lgen" onclick="setLang('en')">English · EN</button>
+        <button id="lgja" onclick="setLang('ja')">日本語 · JA</button>
+      </span>
+    </span>
+  </div>
+  <div class="status"><span class="dot" id="dot"></span><span id="conn" data-i18n="connWaiting">연결 대기</span>
+    &nbsp;|&nbsp; <span data-i18n="lblNodes">A-Box 노드</span> <span id="nc">0</span> · <span data-i18n="lblEdges">A-Box 엣지</span> <span id="ec">0</span></div>
+</header>
+
+<div class="wrap">
+  <!-- 좌측: 진행 피드 (Claude Code가 푸시) -->
+  <section class="feed-col">
+    <div class="feed-head">
+      <div class="t" data-i18n="feedTitle">워크샵 진행</div>
+      <div class="s" data-i18n="feedSub">Claude Code에서 대화하면 여기에 실시간으로 쌓입니다</div>
+    </div>
+    <div id="feed"><div class="empty">아직 대화가 없습니다.<br>Claude Code에서 워크샵을 시작하세요.</div></div>
+  </section>
+
+  <!-- 가운데: 라이브 그래프 -->
+  <main class="center">
+    <div class="toggle">
+      <button id="tA" class="active" onclick="setView('abox')" data-i18n="tabAbox">인스턴스 (A-Box)</button>
+      <button id="tT" onclick="setView('tbox')" data-i18n="tabTbox">스키마 (T-Box)</button>
+    </div>
+    <div class="focusbar" id="focusbar">
+      <span class="fb-dot"></span>
+      <span class="fb-label" id="fbLabel"></span>
+      <button onclick="clearFocus()" data-i18n="btnShowAll">✕ 전체 보기</button>
+    </div>
+    <div id="cy"></div>
+  </main>
+
+  <!-- 우측: 현재 그래프 요약 -->
+  <aside class="right">
+    <div class="sec">
+      <h3 data-i18n="hCurrent">현재 상태</h3>
+      <div class="stat"><span data-i18n="sEnt">엔티티 타입 (T-Box)</span><b id="nEnt">0</b></div>
+      <div class="stat"><span data-i18n="sRel">관계 타입 (T-Box)</span><b id="nRel">0</b></div>
+      <div class="stat"><span data-i18n="sNode">인스턴스 노드 (A-Box)</span><b id="nNode">0</b></div>
+      <div class="stat"><span data-i18n="sEdge">인스턴스 엣지 (A-Box)</span><b id="nEdge">0</b></div>
+    </div>
+    <div class="sec"><h3 data-i18n="hEnt">엔티티 타입</h3><div id="ents"></div></div>
+    <div class="sec"><h3 data-i18n="hRel">관계 타입</h3><div id="rels"></div></div>
+    <div class="sec" style="flex:1"><h3 data-i18n="hInsp">노드 인스펙터</h3>
+      <div class="inspector" id="insp" data-i18n="inspEmpty">노드를 클릭하면 속성이 표시됩니다.</div></div>
+  </aside>
+</div>
+
+<script>
+let cy, view="abox", lastData={tbox:{entities:{},relations:{}},snapshot:{nodes:[],edges:[]}};
+
+// ---- i18n (KO / EN / JA) — UI 문자열만. 엔티티/데이터 라벨은 고객 데이터라 번역 안 함 ----
+const I18N={
+  ko:{ subtitle:"온톨로지 디스커버리 워크샵",
+    btnFeed:"◧ 대화", btnState:"상태 ◨", ttFeed:"대화 피드 접기/펴기", ttState:"상태창 접기/펴기",
+    btnReset:"⟲ 백지", btnResetT:"백지", ttReset:"백지에서 시작",
+    btnReport:"보고서", ttReport:"보고서 생성 후 새 탭에서 열기",
+    btnSnap:"스냅샷", ttSnap:"대화·그래프·상태를 담은 단독 실행 HTML 열기",
+    ttZip:"보고서+스냅샷+Neptune 묶음 ZIP 다운로드", ttNeptune:"Neptune 익스포트",
+    connWaiting:"연결 대기", connLive:"실시간 연결됨", connRetry:"재연결 중...", connSnap:"정적 스냅샷",
+    lblNodes:"A-Box 노드", lblEdges:"A-Box 엣지",
+    feedTitle:"워크샵 진행", feedSub:"Claude Code에서 대화하면 여기에 실시간으로 쌓입니다",
+    feedEmpty:"아직 대화가 없습니다.<br>Claude Code에서 워크샵을 시작하세요.",
+    tabAbox:"인스턴스 (A-Box)", tabTbox:"스키마 (T-Box)", btnShowAll:"✕ 전체 보기",
+    hCurrent:"현재 상태", sEnt:"엔티티 타입 (T-Box)", sRel:"관계 타입 (T-Box)", sNode:"인스턴스 노드 (A-Box)", sEdge:"인스턴스 엣지 (A-Box)",
+    hEnt:"엔티티 타입", hRel:"관계 타입", hInsp:"노드 인스펙터", inspEmpty:"노드를 클릭하면 속성이 표시됩니다.",
+    none:"아직 없음", noProps:"(속성 없음)", relation:"관계", type:"타입", rows:"건", focusBtn:"🔍 그래프에서 이 결과만 보기",
+    snapshotTitle:"워크샵 스냅샷", readOnlySnapshot:"읽기 전용 스냅샷",
+    noSnapshotFeed:"이 스냅샷에 기록된 대화가 없습니다.",
+    snapshotUnavailable:"정적 스냅샷에서는 사용할 수 없습니다. 라이브 워크샵 서버에서 실행하세요.",
+    roleCustomer:"고객", roleOperator:"운영자", roleAgent:"Claude", roleSystem:"시스템",
+    confReset:"그래프를 백지 상태로 초기화할까요? 되돌릴 수 없습니다.",
+    repGenTitle:"보고서 생성 중", repGenBody:"잠시만요…",
+    repDoneTitle:"보고서 생성 완료", repDoneBody:"새 탭에서 보고서를 엽니다. (exports/report/)",
+    nepTitle:"Neptune 익스포트" },
+  en:{ subtitle:"Ontology Discovery Workshop",
+    btnFeed:"◧ Feed", btnState:"State ◨", ttFeed:"Toggle conversation feed", ttState:"Toggle status panel",
+    btnReset:"⟲ Reset", btnResetT:"Reset", ttReset:"Start from blank",
+    btnReport:"Report", ttReport:"Generate report and open in a new tab",
+    btnSnap:"Snapshot", ttSnap:"Open standalone HTML with feed, graph and state",
+    ttZip:"Download ZIP (report + snapshot + Neptune)", ttNeptune:"Neptune export",
+    connWaiting:"Waiting…", connLive:"Live", connRetry:"Reconnecting…", connSnap:"Static snapshot",
+    lblNodes:"A-Box nodes", lblEdges:"A-Box edges",
+    feedTitle:"Workshop Feed", feedSub:"Conversations from Claude Code stream here in real time",
+    feedEmpty:"No conversation yet.<br>Start the workshop in Claude Code.",
+    tabAbox:"Instances (A-Box)", tabTbox:"Schema (T-Box)", btnShowAll:"✕ Show all",
+    hCurrent:"Current State", sEnt:"Entity types (T-Box)", sRel:"Relation types (T-Box)", sNode:"Instance nodes (A-Box)", sEdge:"Instance edges (A-Box)",
+    hEnt:"Entity types", hRel:"Relation types", hInsp:"Node Inspector", inspEmpty:"Click a node to see its properties.",
+    none:"None yet", noProps:"(no properties)", relation:"relation", type:"type", rows:"rows", focusBtn:"🔍 Show only this result",
+    snapshotTitle:"Workshop Snapshot", readOnlySnapshot:"Read-only snapshot",
+    noSnapshotFeed:"No conversation was recorded in this snapshot.",
+    snapshotUnavailable:"This action is unavailable in a static snapshot. Run it from the live workshop server.",
+    roleCustomer:"Customer", roleOperator:"Operator", roleAgent:"Claude", roleSystem:"System",
+    confReset:"Reset the graph to blank? This cannot be undone.",
+    repGenTitle:"Generating report", repGenBody:"One moment…",
+    repDoneTitle:"Report ready", repDoneBody:"Opening the report in a new tab. (exports/report/)",
+    nepTitle:"Neptune export" },
+  ja:{ subtitle:"オントロジー・ディスカバリー・ワークショップ",
+    btnFeed:"◧ 会話", btnState:"状態 ◨", ttFeed:"会話フィードの開閉", ttState:"状態パネルの開閉",
+    btnReset:"⟲ 初期化", btnResetT:"初期化", ttReset:"白紙から開始",
+    btnReport:"レポート", ttReport:"レポートを生成して新しいタブで開く",
+    btnSnap:"スナップショット", ttSnap:"会話・グラフ・状態を含む単独HTMLを開く",
+    ttZip:"ZIPダウンロード（レポート+スナップショット+Neptune）", ttNeptune:"Neptuneエクスポート",
+    connWaiting:"接続待ち", connLive:"リアルタイム接続", connRetry:"再接続中…", connSnap:"静的スナップショット",
+    lblNodes:"A-Boxノード", lblEdges:"A-Boxエッジ",
+    feedTitle:"ワークショップ進行", feedSub:"Claude Codeでの会話がここにリアルタイムで表示されます",
+    feedEmpty:"まだ会話がありません。<br>Claude Codeでワークショップを開始してください。",
+    tabAbox:"インスタンス (A-Box)", tabTbox:"スキーマ (T-Box)", btnShowAll:"✕ 全体表示",
+    hCurrent:"現在の状態", sEnt:"エンティティ型 (T-Box)", sRel:"リレーション型 (T-Box)", sNode:"インスタンスノード (A-Box)", sEdge:"インスタンスエッジ (A-Box)",
+    hEnt:"エンティティ型", hRel:"リレーション型", hInsp:"ノードインスペクター", inspEmpty:"ノードをクリックすると属性が表示されます。",
+    none:"まだありません", noProps:"(属性なし)", relation:"リレーション", type:"タイプ", rows:"件", focusBtn:"🔍 この結果だけグラフ表示",
+    snapshotTitle:"ワークショップスナップショット", readOnlySnapshot:"読み取り専用スナップショット",
+    noSnapshotFeed:"このスナップショットに記録された会話はありません。",
+    snapshotUnavailable:"静的スナップショットでは使用できません。ライブワークショップサーバーで実行してください。",
+    roleCustomer:"顧客", roleOperator:"運営者", roleAgent:"Claude", roleSystem:"システム",
+    confReset:"グラフを白紙に初期化しますか？元に戻せません。",
+    repGenTitle:"レポート生成中", repGenBody:"少々お待ちください…",
+    repDoneTitle:"レポート生成完了", repDoneBody:"新しいタブでレポートを開きます。(exports/report/)",
+    nepTitle:"Neptuneエクスポート" },
+};
+let LANG=(localStorage.getItem("of_lang")||"ko");
+if(!I18N[LANG]) LANG="ko";
+function t(k){ return (I18N[LANG]&&I18N[LANG][k]) || I18N.ko[k] || k; }
+function applyI18n(){
+  document.documentElement.lang=LANG;
+  document.querySelectorAll("[data-i18n]").forEach(el=>{ el.innerHTML=t(el.getAttribute("data-i18n")); });
+  document.querySelectorAll("[data-i18n-title]").forEach(el=>{ el.title=t(el.getAttribute("data-i18n-title")); });
+  ["ko","en","ja"].forEach(l=>{ const b=document.getElementById("lg"+l); if(b) b.classList.toggle("on",l===LANG); });
+  const cur=document.getElementById("langCur"); if(cur) cur.textContent=LANG.toUpperCase();
+}
+function toggleLangMenu(e){ e.stopPropagation(); document.getElementById("langDd").classList.toggle("open"); }
+document.addEventListener("click",(e)=>{ const dd=document.getElementById("langDd"); if(dd && !dd.contains(e.target)) dd.classList.remove("open"); });
+function setLang(l){
+  if(!I18N[l]) return;
+  LANG=l; localStorage.setItem("of_lang",l);
+  const dd=document.getElementById("langDd"); if(dd) dd.classList.remove("open");
+  applyI18n(); setConn(); renderFeed(); updateSummary();
+  const insp=document.getElementById("insp"); if(insp&&!lastSelection) insp.innerHTML=t("inspEmpty");
+}
+function loadLang(){ applyI18n(); }
+
+// 엔티티 타입별 색상 — 파스텔 무지개(빨·주·노·초·파·남·보 + 핑크·청록).
+// 등장 순서대로 배정해 색만 보고도 타입을 구분할 수 있게 한다(해시 충돌 없음).
+// 그래프와 사이드바가 같은 색을 쓴다.
+// 손으로 고른 파스텔 무지개 9색(흔한 경우). 이걸 넘는 타입은 아래 genColor가 무한 생성.
+const PALETTE=['#f4a6a6','#ffc488','#ffe08a','#a7e0a4','#92c6f2','#a6acee','#cba6ec','#f4a9d0','#8fded0'];
+function hslToHex(h,s,l){ s/=100; l/=100;
+  const a=s*Math.min(l,1-l), k=n=>(n+h/30)%12;
+  const f=n=>l-a*Math.max(-1,Math.min(k(n)-3,9-k(n),1));
+  const to=x=>Math.round(x*255).toString(16).padStart(2,'0');
+  return '#'+to(f(0))+to(f(8))+to(f(4)); }
+// 인덱스 → 색. 9색 팔레트를 넘으면 황금각(137.5°)으로 색상환을 고르게 돌며 새 파스텔 생성(겹침 없음).
+function genColor(i){ return i<PALETTE.length ? PALETTE[i] : hslToHex((i*137.508)%360,58,72); }
+const _colorReg={}; let _colorNext=0;
+// tbox 엔티티 키 순서대로 색 등록(이미 등록된 건 유지 → 타입이 늘어도 기존 색 고정).
+function registerTypes(types){
+  (types||[]).forEach(t=>{ if(t && !(t in _colorReg)){ _colorReg[t]=genColor(_colorNext); _colorNext++; } });
+}
+function colorFor(etype){
+  if(!etype) return PALETTE[0];
+  if(etype in _colorReg) return _colorReg[etype];
+  let h=0; for(const ch of etype) h=(h*31+ch.charCodeAt(0))>>>0;  // 미등록 폴백도 충돌 없는 생성색
+  return genColor(h%997);
+}
+// 파스텔 배경 위 텍스트·테두리용으로 같은 색을 어둡게.
+function shade(hex,f){ const n=parseInt(hex.slice(1),16);
+  const r=Math.round(((n>>16)&255)*f), g=Math.round(((n>>8)&255)*f), b=Math.round((n&255)*f);
+  return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1); }
+function inkFor(etype){ return shade(colorFor(etype),0.38); }   // 라벨 글자색
+function ringFor(etype){ return shade(colorFor(etype),0.62); }  // 테두리색
+function edgeLabel(ele){
+  const l=ele.data('label')||'', p=ele.data('props')||{};
+  const ps=Object.entries(p).map(([k,v])=>`${k}=${v}`).join(', ');
+  return ps? `${l} · ${ps}` : l;
+}
+
+const style=[
+  {selector:'node',style:{
+    'background-color':ele=>colorFor(ele.data('etype')),'background-opacity':1,
+    'border-color':ele=>ringFor(ele.data('etype')),'border-width':2,
+    'label':'data(label)','color':ele=>inkFor(ele.data('etype')),
+    'font-family':'-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif',
+    'font-size':'11px','font-weight':'bold',
+    'text-valign':'center','text-halign':'center','width':48,'height':48,
+    'text-outline-color':'#ffffff','text-outline-opacity':0.55,'text-outline-width':1.6,
+    'text-max-width':'72px','text-wrap':'wrap'}},
+  {selector:'node[type="tbox"]',style:{'shape':'round-rectangle','width':108,'height':42,
+    'background-color':ele=>colorFor(ele.data('etype')),'background-opacity':0.9,
+    'border-color':ele=>ringFor(ele.data('etype')),'border-width':2,
+    'color':ele=>inkFor(ele.data('etype'))}},
+  {selector:'edge',style:{'width':2,'line-color':'#3a506b','target-arrow-color':'#3a506b',
+    'target-arrow-shape':'triangle','curve-style':'bezier','label':edgeLabel,
+    'font-size':'9px','color':'#aebcd0','text-rotation':'autorotate','text-background-color':'#0d1117','text-background-opacity':0.92,'text-background-padding':3}},
+  {selector:'.hl',style:{'border-color':'#f7b955','border-width':3,'line-color':'#f7b955','target-arrow-color':'#f7b955'}},
+  /* 초점(focus): 매칭된 노드만 강조, 나머지는 흐리게 / 숨김 */
+  {selector:'.focus',style:{'border-color':'#ffffff','border-width':4,
+    'background-opacity':1,'z-index':99}},
+  {selector:'.dim',style:{'opacity':0.1}},
+  {selector:'.hidden',style:{'display':'none'}}
+];
+
+let lastSelection=null;   // 인스펙터에 표시 중인 노드/엣지(언어 전환 시 빈 안내 유지용)
+function initCy(){
+  loadLang();   // 라이브·스냅샷 공통 진입점에서 UI 문자열 적용
+  cy=cytoscape({container:document.getElementById('cy'),style,
+    layout:{name:'cose',animate:true,animationDuration:400},wheelSensitivity:0.2});
+  cy.on('tap','node',e=>{
+    const d=e.target.data();
+    lastSelection={kind:'node',d};
+    document.getElementById('insp').innerHTML=
+      `<b>${d.label}</b> · <span style="color:${colorFor(d.etype)}">${d.etype||t('type')}</span><br>`+
+      (Object.entries(d.props||{}).map(([k,v])=>`${k}: <b>${v}</b>`).join('<br>')||t('noProps'));
+  });
+  // 엣지 클릭 → 관계 속성(점수 등) 표시
+  cy.on('tap','edge',e=>{
+    const d=e.target.data();
+    lastSelection={kind:'edge',d};
+    const props=Object.entries(d.props||{}).map(([k,v])=>`${k}: <b>${v}</b>`).join('<br>')||t('noProps');
+    document.getElementById('insp').innerHTML=
+      `<b style="color:var(--accent2)">${d.label}</b> <span style="color:var(--muted)">${t('relation')}</span><br>`+
+      `<span style="color:var(--muted)">${(d.source||'').split(':').pop()} → ${(d.target||'').split(':').pop()}</span><br>`+props;
+    cy.elements().removeClass('hl'); e.target.addClass('hl');
+  });
+  cy.on('tap',e=>{ if(e.target===cy) cy.elements().removeClass('hl'); });
+}
+
+// ---- 초점(focus): 쿼리 답을 그래프 위에 직접 투영 ----
+// ids = 시각화 노드 id 목록("{etype}:{pk}"). isolate=나머지 숨김, clear=해제.
+let focusState=null;   // {ids:[...], label:''}
+function applyFocus(ids,label){
+  if(!cy) return;
+  if(view!=='abox'){ setView('abox'); }   // 초점은 인스턴스(A-Box) 기준
+  focusState={ids:ids.slice(), label:label||''};
+  const set=new Set(ids);
+  cy.batch(()=>{
+    cy.elements().removeClass('focus dim hidden');
+    cy.nodes().forEach(n=>{
+      if(set.has(n.id())) n.addClass('focus');
+      else n.addClass('hidden');
+    });
+    // 양 끝이 모두 보이는 엣지만 노출
+    cy.edges().forEach(e=>{
+      if(set.has(e.data('source')) && set.has(e.data('target'))) e.removeClass('hidden');
+      else e.addClass('hidden');
+    });
+  });
+  const fb=document.getElementById('focusbar');
+  document.getElementById('fbLabel').textContent=label||`${ids.length}개 노드`;
+  fb.classList.add('on');
+  const vis=cy.elements(':visible');
+  if(vis.length){
+    cy.layout({name:'cose',animate:true,animationDuration:450,fit:true,padding:40,
+      eles:vis}).run();
+  }
+}
+function clearFocus(){
+  focusState=null;
+  if(cy){
+    cy.batch(()=>cy.elements().removeClass('focus dim hidden'));
+    cy.layout({name:'cose',animate:true,animationDuration:400}).run();
+  }
+  document.getElementById('focusbar').classList.remove('on');
+}
+
+function setView(v){
+  view=v;
+  document.getElementById('tA').classList.toggle('active',v==='abox');
+  document.getElementById('tT').classList.toggle('active',v==='tbox');
+  render();
+}
+
+function render(){
+  registerTypes(Object.keys(lastData.tbox.entities||{}));  // tbox 순서대로 색 고정
+  const els=[];
+  if(view==='abox'){
+    lastData.snapshot.nodes.forEach(n=>els.push(n));
+    lastData.snapshot.edges.forEach(e=>els.push(e));
+  }else{
+    const ents=lastData.tbox.entities||{}, rels=lastData.tbox.relations||{};
+    Object.keys(ents).forEach(k=>els.push({data:{id:k,label:k,type:'tbox',etype:k,props:ents[k].properties}}));
+    Object.values(rels).forEach(r=>els.push({data:{id:r.name+':'+r.src+r.dst,
+      source:r.src,target:r.dst,label:r.name+' ('+(r.cardinality||'N:M')+')'}}));
+  }
+  cy.elements().remove();
+  cy.add(els);
+  cy.layout({name:'cose',animate:true,animationDuration:400}).run();
+  updateSummary();
+  // 그래프가 갱신돼도 진행 중이던 초점은 유지
+  if(focusState && view==='abox') applyFocus(focusState.ids, focusState.label);
+}
+
+function updateSummary(){
+  const ents=lastData.tbox.entities||{}, rels=lastData.tbox.relations||{};
+  const nn=lastData.snapshot.nodes.length, ne=lastData.snapshot.edges.length;
+  document.getElementById('nc').textContent=nn;
+  document.getElementById('ec').textContent=ne;
+  document.getElementById('nNode').textContent=nn;
+  document.getElementById('nEdge').textContent=ne;
+  document.getElementById('nEnt').textContent=Object.keys(ents).length;
+  document.getElementById('nRel').textContent=Object.keys(rels).length;
+  document.getElementById('ents').innerHTML=
+    Object.keys(ents).map(k=>`<span class="pill"><span class="dotc" style="background:${colorFor(k)}"></span>${k}</span>`).join('')
+    ||`<span style="color:var(--muted);font-size:11px">${t('none')}</span>`;
+  document.getElementById('rels').innerHTML=
+    Object.values(rels).map(r=>`<span class="pill r">${r.name}</span>`).join('')
+    ||`<span style="color:var(--muted);font-size:11px">${t('none')}</span>`;
+}
+
+// ---- 진행 피드 ----
+let feedItems=[];   // 원본 보관 → 언어 전환 시 전체 재렌더
+function roleLabel(role){ return t('role'+role.charAt(0).toUpperCase()+role.slice(1)) || role; }
+function clearFeed(){ feedItems=[]; renderFeed(); }
+function renderFeed(){
+  const feed=document.getElementById('feed');
+  if(!feedItems.length){ feed.innerHTML=`<div class="empty">${t('feedEmpty')}</div>`; return; }
+  feed.innerHTML='';
+  feedItems.forEach(it=>feed.appendChild(buildFeedEl(it)));
+  feed.scrollTop=feed.scrollHeight;
+}
+function addFeed(it){
+  feedItems.push(it);
+  const feed=document.getElementById('feed');
+  const empty=feed.querySelector('.empty'); if(empty)empty.remove();
+  feed.appendChild(buildFeedEl(it));
+  feed.scrollTop=feed.scrollHeight;
+}
+function buildFeedEl(it){
+  const kind=it.kind||'note';
+  const div=document.createElement('div');
+  div.className='item k-'+kind;
+  let inner=`<div class="meta"><span class="tag">${kind}</span>`;
+  if(it.role && kind==='chat') inner+=`<span class="role-${it.role}">${roleLabel(it.role)}</span>`;
+  if(it.title) inner+=`<span>${esc(it.title)}</span>`;
+  inner+=`<span class="ts">${it.ts||''}</span></div>`;
+
+  if(kind==='qa'){
+    const m=it.meta||{};
+    inner+=`<div class="body">${md(it.text||it.title||'')}</div>`;
+    if(m.cypher) inner+=`<pre>${esc(m.cypher)}</pre>`;
+    if(m.count!=null){
+      inner+=`<div class="qa-res"><div class="cnt">✓ ${m.count} ${t('rows')}${m.columns?' · ['+m.columns.join(', ')+']':''}</div>`;
+      (m.rows||[]).slice(0,8).forEach(r=>inner+=`<div class="row">${esc(typeof r==='string'?r:JSON.stringify(r))}</div>`);
+      inner+=`</div>`;
+    }
+    // meta.focus.ids 가 있으면 그래프에 바로 투영하는 버튼
+    if(m.focus && Array.isArray(m.focus.ids) && m.focus.ids.length){
+      const fid='focus_'+Math.random().toString(36).slice(2,8);
+      window[fid]={ids:m.focus.ids, label:m.focus.label||it.text||''};
+      inner+=`<button class="qa-focus-btn" onclick="applyFocus(window['${fid}'].ids,window['${fid}'].label)">${t('focusBtn')}</button>`;
+    }
+  }else{
+    inner+=`<div class="body">${md(it.text||'')}</div>`;
+  }
+  div.innerHTML=inner;
+  return div;
+}
+
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function md(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+  .replace(/`(.+?)`/g,'<code>$1</code>').replace(/\n/g,'<br>');}
+
+// ---- 연결 상태 표시(언어 전환 시 재적용 가능) ----
+let connState='waiting';   // waiting | live | retry | snapshot
+function setConn(s){
+  if(s) connState=s;
+  const map={waiting:'connWaiting',live:'connLive',retry:'connRetry',snapshot:'connSnap'};
+  const el=document.getElementById('conn'); if(el) el.textContent=t(map[connState]||'connWaiting');
+  document.getElementById('dot').classList.toggle('on',connState==='live'||connState==='snapshot');
+}
+function authToken(){
+  const urlToken=new URLSearchParams(location.search).get('token');
+  if(urlToken) localStorage.setItem('of_token',urlToken);
+  return localStorage.getItem('of_token')||'';
+}
+function authHeaders(extra){
+  const h=Object.assign({},extra||{});
+  const token=authToken();
+  if(token) h['X-OntoForge-Token']=token;
+  return h;
+}
+function authQuery(){
+  const token=authToken();
+  return token?`?token=${encodeURIComponent(token)}`:'';
+}
+
+// ---- WebSocket ----
+function connect(){
+  const proto=location.protocol==='https:'?'wss':'ws';
+  const token=authToken();
+  const auth=token?`?token=${encodeURIComponent(token)}`:'';
+  const ws=new WebSocket(`${proto}://${location.host}/ws${auth}`);
+  ws.onopen=()=>{setConn('live');};
+  ws.onclose=()=>{setConn('retry');setTimeout(connect,1500);};
+  ws.onmessage=ev=>{
+    const msg=JSON.parse(ev.data);
+    if(msg.type==='init'){
+      lastData={tbox:msg.tbox,snapshot:msg.snapshot};
+      clearFeed();(msg.narrations||[]).forEach(addFeed);
+      render();
+    }else if(msg.type==='graph'){
+      lastData={tbox:msg.tbox,snapshot:msg.snapshot};render();
+    }else if(msg.type==='narration'){
+      addFeed(msg.item);
+    }else if(msg.type==='focus'){
+      if(msg.mode==='clear') clearFocus();
+      else applyFocus(msg.ids||[], msg.label||'');
+    }
+  };
+}
+
+// ---- 수동 보조 버튼 ----
+async function resetGraph(){
+  if(!confirm(t('confReset')))return;
+  await fetch('/reset',{method:'POST',headers:authHeaders()});
+}
+async function exportReport(){
+  addFeed({kind:'note',title:t('repGenTitle'),text:t('repGenBody'),ts:''});
+  await fetch('/export/report',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({lang:LANG})});
+  addFeed({kind:'note',title:t('repDoneTitle'),text:t('repDoneBody'),ts:''});
+  window.open('/files/workshop_report.html'+authQuery(),'_blank');
+}
+function openSnapshot(){ window.open('/export/snapshot.html'+authQuery(),'_blank'); }
+function downloadZip(){ window.location.href='/download/workshop.zip'+authQuery(); }
+async function exportNeptune(){
+  const r=await fetch('/export/neptune',{method:'POST',headers:authHeaders()});const d=await r.json();
+  addFeed({kind:'note',title:t('nepTitle'),text:`openCypher: ${d.opencypher}\nnodes: ${d.bulk.nodes}\nedges: ${d.bulk.edges}`,ts:''});
+}
+
+// ---- 패널 접기 (좌측 피드 / 우측 상태) · 새로고침 후에도 유지 ----
+const panelState={left:true,right:true};
+function applyPanels(){
+  const L=panelState.left, R=panelState.right;
+  document.querySelector('.feed-col').classList.toggle('panel-hidden',!L);
+  document.querySelector('.right').classList.toggle('panel-hidden',!R);
+  document.querySelector('.wrap').style.gridTemplateColumns=`${L?'400px':'0'} 1fr ${R?'280px':'0'}`;
+  document.getElementById('btnLeft').classList.toggle('on',L);
+  document.getElementById('btnRight').classList.toggle('on',R);
+  if(cy){cy.resize(); setTimeout(()=>{cy.resize();cy.fit(undefined,30);},220);}
+}
+function togglePanel(side){
+  panelState[side]=!panelState[side];
+  localStorage.setItem('of_panel_'+side, panelState[side]?'1':'0');
+  applyPanels();
+}
+function loadPanels(){
+  panelState.left = localStorage.getItem('of_panel_left')!=='0';
+  panelState.right = localStorage.getItem('of_panel_right')!=='0';
+  applyPanels();
+}
+
+initCy();loadPanels();connect();
+</script>
+</body>
+</html>

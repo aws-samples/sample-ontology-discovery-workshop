@@ -1,0 +1,13 @@
+OntoForge is sample workshop software for proof-of-concept use.
+
+Security responsibility follows the AWS Shared Responsibility Model. AWS is
+responsible for security of the cloud, including the infrastructure that runs
+managed services such as Amazon Neptune, Amazon S3, and AWS Lambda. Customers
+and builders are responsible for security in the cloud, including data
+classification, IAM policies, VPC and security group configuration, KMS key
+policies, application authentication, audit logging, and compliance controls
+such as PIPA / ISMS-P where applicable.
+
+Do not use this tool with unmasked personal, biometric, or regulated data unless
+the customer has approved the data handling path and the local environment is
+appropriately secured.
