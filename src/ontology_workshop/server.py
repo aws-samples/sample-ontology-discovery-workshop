@@ -34,6 +34,8 @@ from .security import audit_log, safe_export_path
 DB_PATH = os.environ.get("ONTOFORGE_DB", "./workshop.kuzu")
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "static")
 REPORT_DIR = "./exports/report"
+SESSION_PATH = os.environ.get(
+    "ONTOFORGE_SESSION_PATH", "./exports/session/workshop_snapshot.json")
 AUTH_TOKEN = os.environ.get("ONTOFORGE_TOKEN")
 REQUIRE_TOKEN = os.environ.get("ONTOFORGE_REQUIRE_TOKEN", "").lower() in {"1", "true", "yes"}
 
@@ -47,8 +49,11 @@ narrations: list[dict] = []   # Claude Code가 푸시하는 사람용 진행 로
 async def lifespan(app: FastAPI):
     global g
     _configure_audit_logging()
-    g = OntologyGraph(DB_PATH, fresh=os.environ.get("ONTOFORGE_FRESH") == "1")
+    fresh = os.environ.get("ONTOFORGE_FRESH") == "1"
+    g = OntologyGraph(DB_PATH, fresh=fresh)
     os.makedirs(REPORT_DIR, exist_ok=True)
+    if not fresh or os.environ.get("ONTOFORGE_RESTORE_SESSION") == "1":
+        _restore_session_on_start()
     yield
 
 
@@ -77,6 +82,85 @@ def _graph_payload() -> dict:
 def _init_payload() -> dict:
     return {"type": "init", "tbox": g.tbox(), "snapshot": g.snapshot(),
             "narrations": narrations}
+
+
+def _graph_is_empty() -> bool:
+    return not g.tbox().get("entities") and not g.snapshot().get("nodes")
+
+
+def _load_session_payload() -> dict | None:
+    try:
+        path = safe_export_path(SESSION_PATH)
+        if not os.path.exists(path):
+            return None
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:  # noqa: BLE001
+        audit_log("session_autosave_load_failed", error=str(e))
+        return None
+
+
+def _restore_snapshot_payload(payload: dict, restore_graph: bool = True) -> dict:
+    if restore_graph:
+        g.reset()
+        ents = (payload.get("tbox") or {}).get("entities", {}) or {}
+        for name, e in ents.items():
+            g.add_entity_type(EntityType(
+                name, e.get("properties", {}), e.get("primary_key", "name")))
+        rels = (payload.get("tbox") or {}).get("relations", {}) or {}
+        for name, r in rels.items():
+            g.add_relation_type(RelationType(
+                name, r.get("src"), r.get("dst"),
+                r.get("cardinality", "N:M"), r.get("properties", {})))
+
+        skipped = 0
+        for nd in (payload.get("snapshot") or {}).get("nodes", []):
+            d = nd.get("data", {})
+            if d.get("etype"):
+                g.add_instance(d["etype"], d.get("props", {}))
+        for ed in (payload.get("snapshot") or {}).get("edges", []):
+            d = ed.get("data", {})
+            rtype = d.get("label") or d.get("rtype")
+            src = (d.get("source") or "").split(":", 1)[-1]
+            dst = (d.get("target") or "").split(":", 1)[-1]
+            if rtype and src and dst:
+                g.add_edge(rtype, src, dst, d.get("props", {}))
+            else:
+                skipped += 1
+    else:
+        skipped = 0
+
+    narrations.clear()
+    verified_queries.clear()
+    narrations.extend(payload.get("narrations") or [])
+    verified_queries.extend(payload.get("verified_queries") or [])
+    snap = g.snapshot()
+    return {"entities": len(g.tbox().get("entities", {})),
+            "relations": len(g.tbox().get("relations", {})),
+            "nodes": len(snap["nodes"]),
+            "edges": len(snap["edges"]),
+            "narrations": len(narrations),
+            "verified": len(verified_queries),
+            "skipped_edges": skipped}
+
+
+def _restore_session_on_start() -> None:
+    payload = _load_session_payload()
+    if not payload:
+        return
+    restore_graph = _graph_is_empty()
+    res = _restore_snapshot_payload(payload, restore_graph=restore_graph)
+    audit_log("session_autosave_restored", restore_graph=restore_graph, **res)
+
+
+def _autosave_session() -> None:
+    try:
+        path = sx.export_snapshot_json(
+            g, SESSION_PATH, narrations, verified_queries,
+            last_report.get("title") or "OntoForge autosave")
+        audit_log("session_autosaved", path=path)
+    except Exception as e:  # noqa: BLE001
+        audit_log("session_autosave_failed", error=str(e))
 
 
 async def _send_all(payload: dict):
@@ -222,6 +306,7 @@ async def narrate(n: NarrateIn):
     }
     narrations.append(item)
     await _send_all({"type": "narration", "item": item})
+    _autosave_session()
     audit_log("narration_added", kind=n.kind, role=n.role)
     return {"ok": True, "count": len(narrations)}
 
@@ -264,11 +349,13 @@ async def run_skill(s: SkillIn):
         if qres.get("ok"):
             verified_queries.append(
                 {"question": question, "cypher": cypher, "count": qres["count"]})
+            _autosave_session()
         return _json(out)
 
     if s.apply:
         out["applied"] = sk.apply_to_graph(g, s.skill, result)
         await broadcast()
+        _autosave_session()
     return _json(out)
 
 
@@ -276,6 +363,7 @@ async def run_skill(s: SkillIn):
 async def add_entity(e: EntityIn):
     r = g.add_entity_type(EntityType(e.name, e.properties, e.primary_key))
     await broadcast()
+    _autosave_session()
     return r
 
 
@@ -284,6 +372,7 @@ async def add_relation(r: RelationIn):
     out = g.add_relation_type(
         RelationType(r.name, r.src, r.dst, r.cardinality, r.properties))
     await broadcast()
+    _autosave_session()
     return out
 
 
@@ -291,6 +380,7 @@ async def add_relation(r: RelationIn):
 async def add_instance(i: InstanceIn):
     r = g.add_instance(i.etype, i.props)
     await broadcast()
+    _autosave_session()
     return r
 
 
@@ -298,6 +388,7 @@ async def add_instance(i: InstanceIn):
 async def add_edge(e: EdgeIn):
     r = g.add_edge(e.rtype, e.src_key, e.dst_key, e.props)
     await broadcast()
+    _autosave_session()
     return r
 
 
@@ -313,6 +404,7 @@ async def run_query(q: QueryIn):
             verified_queries.append(
                 {"question": q.question, "cypher": q.cypher,
                  "count": r.get("count", 0)})
+            _autosave_session()
     return _json(r)
 
 
@@ -359,6 +451,7 @@ async def reset():
     verified_queries.clear()
     narrations.clear()
     await _send_all(_init_payload())   # 클라이언트 피드까지 비우도록 init 재전송
+    _autosave_session()
     audit_log("server_reset")
     return r
 
@@ -368,6 +461,7 @@ async def drop(d: DropIn):
     r = g.drop_entity_type(d.name) if d.kind == "entity" \
         else g.drop_relation_type(d.name)
     await broadcast()
+    _autosave_session()
     return r
 
 
@@ -375,6 +469,7 @@ async def drop(d: DropIn):
 async def del_instance(d: DelInstanceIn):
     r = g.delete_instance(d.etype, d.key)
     await broadcast()
+    _autosave_session()
     return r
 
 
@@ -382,6 +477,7 @@ async def del_instance(d: DelInstanceIn):
 async def del_edge(d: DelEdgeIn):
     r = g.delete_edge(d.rtype, d.src_key, d.dst_key)
     await broadcast()
+    _autosave_session()
     return r
 
 
@@ -438,6 +534,7 @@ async def export_report(body: ReportIn | None = None):
     last_report.update(title=title, descriptions=descriptions,
                        open_issues=open_issues, schema_map=schema_map,
                        gate_data=gate_data, lang=lang)
+    _autosave_session()
     res = rx.export_all(g, REPORT_DIR, title, verified_queries,
                         open_issues, descriptions, schema_map,
                         gate_data, lang)
@@ -464,46 +561,11 @@ class ImportIn(BaseModel):
 @app.post("/import")
 async def import_snapshot(s: ImportIn):
     """스냅샷을 현재 서버에 올린다(백지화 후 재구성 → 라이브 뷰어로 즉시 표시)."""
-    g.reset()
-    verified_queries.clear()
-    narrations.clear()
-
-    ents = (s.tbox or {}).get("entities", {}) or {}
-    for name, e in ents.items():
-        g.add_entity_type(EntityType(
-            name, e.get("properties", {}), e.get("primary_key", "name")))
-    rels = (s.tbox or {}).get("relations", {}) or {}
-    for name, r in rels.items():
-        g.add_relation_type(RelationType(
-            name, r.get("src"), r.get("dst"),
-            r.get("cardinality", "N:M"), r.get("properties", {})))
-
-    skipped = 0
-    for nd in (s.snapshot or {}).get("nodes", []):
-        d = nd.get("data", {})
-        if d.get("etype"):
-            g.add_instance(d["etype"], d.get("props", {}))
-    for ed in (s.snapshot or {}).get("edges", []):
-        d = ed.get("data", {})
-        rtype = d.get("label") or d.get("rtype")
-        src = (d.get("source") or "").split(":", 1)[-1]
-        dst = (d.get("target") or "").split(":", 1)[-1]
-        if rtype and src and dst:
-            g.add_edge(rtype, src, dst, d.get("props", {}))
-        else:
-            skipped += 1
-
-    narrations.extend(s.narrations or [])
-    verified_queries.extend(s.verified_queries or [])
-
-    snap = g.snapshot()
+    res = _restore_snapshot_payload(s.model_dump(), restore_graph=True)
     await _send_all(_init_payload())
-    audit_log("snapshot_imported", entities=len(ents), relations=len(rels),
-              nodes=len(snap["nodes"]), edges=len(snap["edges"]))
-    return {"ok": True, "entities": len(ents), "relations": len(rels),
-            "nodes": len(snap["nodes"]), "edges": len(snap["edges"]),
-            "narrations": len(narrations), "verified": len(verified_queries),
-            "skipped_edges": skipped}
+    _autosave_session()
+    audit_log("snapshot_imported", **res)
+    return {"ok": True, **res}
 
 
 @app.get("/export/snapshot.html", response_class=HTMLResponse)

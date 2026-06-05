@@ -37,7 +37,7 @@
 py -3.11 -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-$env:PYTHONPATH="src"; $env:ONTOFORGE_FRESH="1"
+$env:PYTHONPATH="src"
 uvicorn ontology_workshop.server:app --reload
 # 브라우저: http://localhost:8000
 ```
@@ -53,9 +53,16 @@ pip install -r requirements.txt
 PYTHONPATH=src python src/seed_demo.py
 
 # 워크샵 서버 (실시간 시각화 + 스킬 패널)
-PYTHONPATH=src ONTOFORGE_FRESH=1 uvicorn ontology_workshop.server:app --reload
+PYTHONPATH=src uvicorn ontology_workshop.server:app --reload
 # 브라우저에서 http://localhost:8000
 ```
+
+### 유지/복원
+워크샵 데이터는 기본적으로 `workshop.kuzu`에 저장됩니다. 서버를 내렸다 다시 올릴 때는 `ONTOFORGE_FRESH=1`을 넣지 않으면 기존 워크샵을 이어서 불러옵니다.
+
+그래프·진행 로그·검증 질의가 바뀔 때마다 `exports/session/workshop_snapshot.json`에도 자동 저장됩니다. 서버 시작 시 Kùzu 그래프가 비어 있으면 이 autosave 스냅샷에서 자동 복원합니다. 새 워크샵을 명시적으로 시작하려면 서버 기동 후 UI의 reset 버튼 또는 `POST /reset`을 사용하세요.
+
+`ONTOFORGE_FRESH=1`은 시작 시 로컬 Kùzu DB를 삭제해야 할 때만 사용하세요. 실수로 fresh 실행을 했다면 autosave 파일이 남아 있는 동안 `ONTOFORGE_FRESH=1` 없이 다시 시작하면 복원할 수 있습니다.
 
 ### 대화 스킬 (M1)
 좌측 패널에서 고객 답변을 받아적고 스킬을 실행하면 엔티티·관계가 자동으로
@@ -94,14 +101,14 @@ OntoForge는 단일 운영자 로컬 워크샵 도구다. 고객 민감정보를
 1. 로컬 서버는 `127.0.0.1`에 바인딩하고, 공유 네트워크에 노출하지 않는다. Loopback 접속(`localhost`, `127.0.0.1`, `::1`)은 기본적으로 토큰 없이 허용된다.
 2. 기본 로컬 실행은 토큰 없이 시작한다.
    ```bash
-   PYTHONPATH=src ONTOFORGE_FRESH=1 uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
+   PYTHONPATH=src uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
    # 브라우저: http://localhost:8000
    ```
 3. 공유 네트워크에 노출하거나 localhost에서도 인증을 강제해야 하면 REST/WebSocket 접근 토큰을 설정한다.
    ```bash
    export ONTOFORGE_TOKEN="$(openssl rand -hex 24)"
    export ONTOFORGE_REQUIRE_TOKEN=1  # localhost에서도 토큰을 강제할 때만 설정
-   PYTHONPATH=src ONTOFORGE_FRESH=1 uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
+   PYTHONPATH=src uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
    # 브라우저: http://localhost:8000/?token=$ONTOFORGE_TOKEN
    # curl 사용 시: -H "X-OntoForge-Token: $ONTOFORGE_TOKEN"
    ```

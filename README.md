@@ -49,7 +49,7 @@ The local workshop runs openCypher against the embedded Kuzu graph and visualize
 py -3.11 -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-$env:PYTHONPATH="src"; $env:ONTOFORGE_FRESH="1"
+$env:PYTHONPATH="src"
 uvicorn ontology_workshop.server:app --reload
 # Browser: http://localhost:8000
 ```
@@ -65,9 +65,17 @@ pip install -r requirements.txt
 PYTHONPATH=src python src/seed_demo.py
 
 # Workshop server with live visualization and skill panel.
-PYTHONPATH=src ONTOFORGE_FRESH=1 uvicorn ontology_workshop.server:app --reload
+PYTHONPATH=src uvicorn ontology_workshop.server:app --reload
 # Browser: http://localhost:8000
 ```
+
+## Persistence and Restore
+
+Workshop data is persisted in `workshop.kuzu` by default. Restart the server without `ONTOFORGE_FRESH=1` to continue the existing workshop.
+
+OntoForge also writes an autosave snapshot to `exports/session/workshop_snapshot.json` after graph, narration, query, import, reset, or report changes. On startup, if the Kuzu graph is empty, the server restores from this autosave automatically. If you intentionally want a blank workshop, call `POST /reset` from the UI or curl after the server starts.
+
+Use `ONTOFORGE_FRESH=1` only when you explicitly want to delete the local Kuzu database at startup. If a fresh start was used accidentally and the autosave file still exists, restart without `ONTOFORGE_FRESH=1`; the server can rebuild the graph from `exports/session/workshop_snapshot.json`.
 
 ## Conversation Skill
 
@@ -102,14 +110,14 @@ OntoForge is designed as a single-operator local workshop tool. Apply the contro
 1. Bind the local server to `127.0.0.1` and do not expose it to a shared network. Loopback access (`localhost`, `127.0.0.1`, `::1`) is allowed without a token by default.
 2. Start normal local workshops without a token.
    ```bash
-   PYTHONPATH=src ONTOFORGE_FRESH=1 uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
+   PYTHONPATH=src uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
    # Browser: http://localhost:8000
    ```
 3. If the server is exposed to a shared network, or if localhost must also be token-gated, set a REST/WebSocket access token.
    ```bash
    export ONTOFORGE_TOKEN="$(openssl rand -hex 24)"
    export ONTOFORGE_REQUIRE_TOKEN=1  # Only when localhost must require the token.
-   PYTHONPATH=src ONTOFORGE_FRESH=1 uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
+   PYTHONPATH=src uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
    # Browser: http://localhost:8000/?token=$ONTOFORGE_TOKEN
    # curl: -H "X-OntoForge-Token: $ONTOFORGE_TOKEN"
    ```

@@ -17,7 +17,7 @@ Start or recover the local OntoForge server for a localhost-only workshop.
 4. If loopback returns `401 Unauthorized`, assume a token-protected server is already running. Unless the user asked for token mode, restart the local uvicorn process for this workspace without `ONTOFORGE_TOKEN` and without `ONTOFORGE_REQUIRE_TOKEN`.
 5. If the server is not running, start it bound to loopback:
    ```bash
-   PYTHONPATH=src ONTOFORGE_FRESH=1 .venv/bin/uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
+   PYTHONPATH=src .venv/bin/uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
    ```
 6. Verify both endpoints:
    ```bash
@@ -29,5 +29,7 @@ Start or recover the local OntoForge server for a localhost-only workshop.
 ## Notes
 
 - If `.venv/bin/uvicorn` is missing, install dependencies from `requirements.txt` first.
+- Do not use `ONTOFORGE_FRESH=1` for normal restarts. It deletes `workshop.kuzu`; use `/reset` only when the operator explicitly wants a blank workshop.
+- The server autosaves workshop state to `exports/session/workshop_snapshot.json` and restores it on startup when the graph is empty.
 - Use token mode only when the user explicitly requests shared-network or auth testing.
 - For actual workshop operation, follow `.claude/skills/ontoforge-workshop/SKILL.md`.

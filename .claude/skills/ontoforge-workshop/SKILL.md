@@ -45,11 +45,13 @@ Check whether the server is running; start it if needed:
 ```bash
 cd "${PROJECT_ROOT:-/path/to/ontology-workshop}"
 curl -s http://localhost:8000/snapshot >/dev/null 2>&1 || \
-  (PYTHONPATH=src ONTOFORGE_FRESH=1 .venv/bin/uvicorn ontology_workshop.server:app \
+  (PYTHONPATH=src .venv/bin/uvicorn ontology_workshop.server:app \
    --host 127.0.0.1 --port 8000 > /tmp/ontoforge.log 2>&1 &)
 ```
 
-When ready, tell the operator to open `http://localhost:8000`. For a new customer, reset the graph with:
+Do not set `ONTOFORGE_FRESH=1` for normal restarts; it deletes the local Kuzu database before startup. Existing graph data is loaded from `workshop.kuzu`, and feed/query state is restored from `exports/session/workshop_snapshot.json` when needed.
+
+When ready, tell the operator to open `http://localhost:8000`. For a new customer, reset the graph explicitly with:
 
 ```bash
 curl -X POST http://localhost:8000/reset
