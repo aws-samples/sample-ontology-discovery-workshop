@@ -1,34 +1,36 @@
-# OntoForge — 온톨로지 디스커버리 워크샵 도구
+# OntoForge — Ontology Discovery Workshop Tool
 
-고객과 **대화하며 온톨로지를 실시간으로 만들고 검증**하는 로컬 도구다. 합의된 온톨로지는 그대로 Amazon Neptune으로 승격(promote)하여 구성을 활용, 데이터 모델을 구축하여 향후 온톨로지 구축에 활용할 수 있습니다.
+[English](./README.md) · [한국어](./README.ko.md) · [日本語](./README.ja.md)
 
-## 무엇을 하나
-1. 대화에서 엔티티·관계·속성을 구조화 → **Kùzu(임베디드 property graph)** 에 실시간 반영
-2. 스키마(T-Box) / 인스턴스(A-Box)를 **실시간 그래프로 시각화** (Cytoscape.js)
-3. 고객 질문을 **openCypher로 검증** — "이 답이 진짜 그래프에서 나오네요"
-4. 온톨로지 문서(Markdown, Obsidian 호환) 자동 생성
-5. **Neptune 익스포트** (openCypher 스크립트 + Bulk Loader CSV)
+A local tool for **building and validating ontologies in real time through conversation** with customers. The agreed-upon ontology can be promoted directly to Amazon Neptune to leverage the configuration, build a data model, and reuse it for future ontology work.
 
-자세한 설계·보안 제약·범위는 [`docs/DESIGN.md`](./docs/DESIGN.md)와
-[`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md), 대화 스킬은
-[`skills/WORKSHOP_SKILLS.md`](./skills/WORKSHOP_SKILLS.md) 참조.
+## What it does
+1. Structures entities, relationships, and properties from conversation → reflected in real time into **Kùzu (an embedded property graph)**
+2. **Visualizes the schema (T-Box) and instances (A-Box) as a live graph** (Cytoscape.js)
+3. **Validates customer questions with openCypher** — "so this answer really does come from the graph"
+4. Automatically generates ontology documentation (Markdown, Obsidian-compatible)
+5. **Neptune export** (openCypher scripts + Bulk Loader CSV)
 
-### 워크샵 운영 (M2)
-- **백지 시작**: 좌측 상단 `⟲ 백지` 버튼 → 새 고객 대화를 처음부터 쌓기
-- **변경 모드**: 사이드바의 엔티티/관계 칩을 클릭하면 삭제(관련 관계 연쇄 삭제). 대화 중 "모의고사 추가하면?" 같은 변경이 실시간 반영
-- **산출물 3종**: `📄 워크샵 산출물 3종 생성` 버튼 → `exports/report/`에 생성
-  1. 워크샵 서머리 (엔티티·관계·검증 질의)
-  2. AWS 구축 아키텍처 제안 (Neptune 규모 자동 추정 + 데이터 흐름 + 컴플라이언스)
-  3. 데이터 준비 상태 (보유/미보유 분류, 준비도 %)
-  4. **기술 미팅 인계서** — 확정 스키마, 적재용 익스포트 안내, 데이터 매핑 액션, 검증 포인트, 오픈 이슈
-  - 포맷: Markdown + HTML + PDF(weasyprint) + docx(python-docx)
-  - 인계 번들: 같은 폴더에 `neptune.cypher` + `bulk/*.csv`도 함께 생성 → 기술팀에 폴더째 전달
+For detailed design, security constraints, and scope, see [`docs/DESIGN.md`](./docs/DESIGN.md) and
+[`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md); for conversation skills, see
+[`skills/WORKSHOP_SKILLS.md`](./skills/WORKSHOP_SKILLS.md).
 
-### 질의 실행 대상
-현재 **Cytoscape**에 실제 openCypher를 실행해 결과를 시각화한다. 리모트 Neptune
-라이브 쿼리는 M3 예정(현재는 익스포트만).
+### Workshop operation (M2)
+- **Start from scratch**: top-left `⟲ Blank` button → build a new customer conversation from the ground up
+- **Edit mode**: click an entity/relationship chip in the sidebar to delete it (related relationships are cascade-deleted). Changes during the conversation — e.g. "what if we add a mock exam?" — are reflected in real time
+- **Three deliverables**: `📄 Generate the 3 workshop deliverables` button → generated under `exports/report/`
+  1. Workshop summary (entities, relationships, validation queries)
+  2. Proposed AWS build architecture (automatic Neptune sizing estimate + data flow + compliance)
+  3. Data readiness (classification of available/unavailable data, readiness %)
+  4. **Technical meeting handoff** — finalized schema, export-for-loading guidance, data mapping actions, validation points, open issues
+  - Formats: Markdown + HTML + PDF (weasyprint) + docx (python-docx)
+  - Handoff bundle: `neptune.cypher` + `bulk/*.csv` are generated in the same folder → hand the whole folder to the technical team
 
-## 빠른 시작
+### Query execution target
+Currently, actual openCypher is executed against **Cytoscape** and the results are visualized. Live remote
+Neptune queries are planned for M3 (currently export only).
+
+## Quick start
 
 ### Windows (PowerShell)
 ```powershell
@@ -37,88 +39,88 @@ py -3.11 -m venv .venv
 pip install -r requirements.txt
 $env:PYTHONPATH="src"; $env:ONTOFORGE_FRESH="1"
 uvicorn ontology_workshop.server:app --reload
-# 브라우저: http://localhost:8000
+# Browser: http://localhost:8000
 ```
-> weasyprint는 Windows에서 GTK 런타임이 없으면 설치/실행이 까다로울 수 있다.
-> 그 경우 PDF만 자동으로 건너뛰고(나머지 3포맷은 정상 생성), HTML 리포트를
-> 브라우저에서 "인쇄 → PDF로 저장"하면 된다. 도구가 그렇게 안내한다.
+> weasyprint can be tricky to install/run on Windows without the GTK runtime.
+> In that case, only PDF is automatically skipped (the other 3 formats are generated normally), and you can
+> open the HTML report in a browser and use "Print → Save as PDF". The tool guides you through this.
 
 ### macOS / Linux
 ```bash
 pip install -r requirements.txt
 
-# 데모 데이터 시드 + 콘솔 출력
+# Seed demo data + console output
 PYTHONPATH=src python src/seed_demo.py
 
-# 워크샵 서버 (실시간 시각화 + 스킬 패널)
+# Workshop server (live visualization + skills panel)
 PYTHONPATH=src ONTOFORGE_FRESH=1 uvicorn ontology_workshop.server:app --reload
-# 브라우저에서 http://localhost:8000
+# In your browser: http://localhost:8000
 ```
 
-### 대화 스킬 (M1)
-좌측 패널에서 고객 답변을 받아적고 스킬을 실행하면 엔티티·관계가 자동으로
-그래프·시각화·문서에 반영된다. 추출 경로는 두 가지:
-- `ANTHROPIC_API_KEY` 환경변수가 있으면 **Claude API(Sonnet)** 로 추출
-- 없으면 **오프라인 규칙 기반 추출기**로 대체 (현장 데모 안정성)
-외부 Claude API 사용은 고객 데이터 처리·법무·보안 승인이 있는 경우에만 켠다.
-승인이 없거나 민감정보가 포함될 수 있으면 `ANTHROPIC_API_KEY`를 설정하지 말고
-오프라인 추출기로 진행하거나, 후속 구현 단계에서 Amazon Bedrock의 승인된 모델 경로를 사용한다.
+### Conversation skills (M1)
+In the left panel, transcribe the customer's answers and run a skill; entities and relationships are automatically
+reflected into the graph, visualization, and documentation. There are two extraction paths:
+- If the `ANTHROPIC_API_KEY` environment variable is set, extraction uses the **Claude API (Sonnet)**
+- Otherwise, it falls back to the **offline rule-based extractor** (for on-site demo stability)
 
-오프라인 추출기 도메인 커버리지: 교육 / 미디어·엔터테인먼트 / 게임 / 스포츠 /
-제조·하이테크 / 텔코 / 자동차 / 엔터프라이즈(복합기업·계열사 모델 포함).
-한국어 입력은 영문 PascalCase 엔티티명(`학생→Student`, `차량→Vehicle` 등)으로
-표준화된다. 추가 도메인은 `src/ontology_workshop/skills.py`의 `_ENTITY_HINTS`와
-`_mock_relations`에 1줄씩 추가.
+Only enable the external Claude API when you have customer-data, legal, and security approval.
+If you lack approval or sensitive information may be involved, do not set `ANTHROPIC_API_KEY`; proceed with the
+offline extractor, or use an approved Amazon Bedrock model path in a later implementation phase.
+
+Offline extractor domain coverage: education / media & entertainment / gaming / sports /
+manufacturing & high-tech / telco / automotive / enterprise (including conglomerate and affiliate models).
+Korean input is normalized to English PascalCase entity names (`학생→Student`, `차량→Vehicle`, etc.).
+To add domains, add one line each to `_ENTITY_HINTS` and `_mock_relations` in `src/ontology_workshop/skills.py`.
 
 ```bash
-export ANTHROPIC_API_KEY=<approved-api-key>   # 선택: API 추출 사용 시
+export ANTHROPIC_API_KEY=<approved-api-key>   # optional: when using API extraction
 ```
 
-## 아키텍처
-정식 구성도는 [`docs/architecture.puml`](./docs/architecture.puml)에 있으며,
-보안 설계는 [`docs/DESIGN.md`](./docs/DESIGN.md)와
-[`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md)에 정리되어 있다.
+## Architecture
+The canonical architecture diagram is in [`docs/architecture.puml`](./docs/architecture.puml), and the
+security design is documented in [`docs/DESIGN.md`](./docs/DESIGN.md) and
+[`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md).
 
 ```
-대화(Claude+스킬) → 오케스트레이터(FastAPI) → Kùzu (단일 진실원천, openCypher)
-                                          ├─ WebSocket → Cytoscape 시각화
-                                          ├─ Markdown 문서
-                                          └─ Neptune 익스포트
+Conversation (Claude + skills) → Orchestrator (FastAPI) → Kùzu (single source of truth, openCypher)
+                                                        ├─ WebSocket → Cytoscape visualization
+                                                        ├─ Markdown documentation
+                                                        └─ Neptune export
 ```
 
-## 보안 구성
-OntoForge는 단일 운영자 로컬 워크샵 도구다. 고객 민감정보를 다룰 때는 아래 설정을 적용한다.
+## Security configuration
+OntoForge is a single-operator, local workshop tool. Apply the settings below when handling customer-sensitive information.
 
-1. 로컬 서버는 `127.0.0.1`에 바인딩하고, 공유 네트워크에 노출하지 않는다. Loopback 접속(`localhost`, `127.0.0.1`, `::1`)은 기본적으로 토큰 없이 허용된다.
-2. 기본 로컬 실행은 토큰 없이 시작한다.
+1. Bind the local server to `127.0.0.1` and do not expose it on a shared network. Loopback connections (`localhost`, `127.0.0.1`, `::1`) are allowed without a token by default.
+2. The default local run starts without a token.
    ```bash
    PYTHONPATH=src ONTOFORGE_FRESH=1 uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
-   # 브라우저: http://localhost:8000
+   # Browser: http://localhost:8000
    ```
-3. 공유 네트워크에 노출하거나 localhost에서도 인증을 강제해야 하면 REST/WebSocket 접근 토큰을 설정한다.
+3. If you must expose it on a shared network or enforce authentication even on localhost, configure a REST/WebSocket access token.
    ```bash
    export ONTOFORGE_TOKEN="$(openssl rand -hex 24)"
-   export ONTOFORGE_REQUIRE_TOKEN=1  # localhost에서도 토큰을 강제할 때만 설정
+   export ONTOFORGE_REQUIRE_TOKEN=1  # set only when enforcing the token even on localhost
    PYTHONPATH=src ONTOFORGE_FRESH=1 uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
-   # 브라우저: http://localhost:8000/?token=$ONTOFORGE_TOKEN
-   # curl 사용 시: -H "X-OntoForge-Token: $ONTOFORGE_TOKEN"
+   # Browser: http://localhost:8000/?token=$ONTOFORGE_TOKEN
+   # With curl: -H "X-OntoForge-Token: $ONTOFORGE_TOKEN"
    ```
-4. TLS가 필요한 환경에서는 uvicorn SSL 옵션을 사용한다.
+4. In environments that require TLS, use uvicorn's SSL options.
    ```bash
    uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000 \
      --ssl-keyfile key.pem --ssl-certfile cert.pem
    ```
-5. `workshop.kuzu`와 `exports/`는 FileVault/BitLocker/LUKS 같은 암호화 파일시스템 위에 둔다. Export 파일은 `./exports` 아래로만 생성되며 `0600` 권한으로 저장된다.
-6. `ANTHROPIC_API_KEY`는 환경변수나 승인된 secret manager에만 저장한다. 고객 개인정보·생체정보·규제 데이터는 마스킹하거나, 외부 LLM 호출을 끄고 오프라인 추출기로 진행한다.
-7. Amazon Neptune 적재 전에는 [`docs/NEPTUNE_SECURITY.md`](./docs/NEPTUNE_SECURITY.md)의 IAM, S3, VPC, KMS, 감사 로그 기준을 적용한다.
+5. Keep `workshop.kuzu` and `exports/` on an encrypted filesystem such as FileVault/BitLocker/LUKS. Export files are created only under `./exports` and stored with `0600` permissions.
+6. Store `ANTHROPIC_API_KEY` only in environment variables or an approved secret manager. Mask customer PII, biometric, and regulated data, or turn off external LLM calls and proceed with the offline extractor.
+7. Before loading into Amazon Neptune, apply the IAM, S3, VPC, KMS, and audit-log criteria in [`docs/NEPTUNE_SECURITY.md`](./docs/NEPTUNE_SECURITY.md).
 
-데이터 분류와 보존/삭제 기준은 [`DATA_CLASSIFICATION.md`](./DATA_CLASSIFICATION.md), 보안 신고와 스캔 기록은 [`SECURITY.md`](./SECURITY.md)를 따른다.
+For data classification and retention/deletion criteria, follow [`DATA_CLASSIFICATION.md`](./DATA_CLASSIFICATION.md); for security reporting and scan records, follow [`SECURITY.md`](./SECURITY.md).
 
-## 주요 제약
-- 내부 모델은 **property graph 단일**. T-Box/A-Box는 UI에서 개념 분리.
-- **OWL 추론은 범위 밖** — 필요 시 Cypher 규칙으로 흉내, 진짜 추론은 별도 트랙.
-- 로컬 openCypher → Neptune은 **대부분** 호환(100% 아님). 적재·튜닝은 기술 미팅 단계.
-- 워크샵은 고객 보안망 내 로컬 실행. 외부 통신은 Claude API 호출뿐.
+## Key constraints
+- The internal model is a **single property graph**. T-Box/A-Box are conceptually separated in the UI.
+- **OWL reasoning is out of scope** — emulate it with Cypher rules if needed; true reasoning is a separate track.
+- Local openCypher → Neptune is **mostly** compatible (not 100%). Loading and tuning happen at the technical meeting stage.
+- The workshop runs locally inside the customer's security network. The only external communication is the Claude API call.
 
-## 라이선스
-이 프로젝트는 Apache-2.0 라이선스로 제공된다. 자세한 내용은 [`LICENSE`](./LICENSE)를 참조한다.
+## License
+This project is provided under the Apache-2.0 license. See [`LICENSE`](./LICENSE) for details.
