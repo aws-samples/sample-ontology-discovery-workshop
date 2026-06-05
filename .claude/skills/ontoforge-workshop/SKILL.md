@@ -2,7 +2,7 @@
 name: ontoforge-workshop
 description: 고객 디스커버리 워크샵을 실시간 온톨로지로 진행한다. OntoForge 웹 뷰어를 띄우고, 운영자가 전달하는 고객 답변을 너(Claude)가 직접 엔티티/관계/속성으로 구조화해 로컬 그래프에 반영하고, 자연어 질문을 openCypher로 검증한다. 대화는 여기(Claude Code)서 하고 그림은 브라우저에 그려진다. "온톨로지 워크샵", "OntoForge", "고객이랑 온톨로지 그리자", "워크샵 시작" 등에 사용.
 copyright: Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-license: MIT-0
+license: Apache-2.0
 ---
 
 # OntoForge 워크샵 운영 Skill
@@ -240,7 +240,7 @@ curl -s -X POST $BASE/narrate -H 'Content-Type: application/json' -d '{
 3. **빠진 것·미해결** — ① 모델 갭(빠진 엔티티/관계/콘텐츠) ② 데이터 갭(미보유 메타) ③ 산출물 loose end.
 4. **다음 액션 제안** — 무엇을 메우면 완결되는지 우선순위.
 
-규칙: 점검에서 🟡·❌나 미해결 갭이 나오면, **리포트 전에 가능한 것은 즉시 메우고**(해당 단계로 되돌아가 반영 → 재검증), 못 메우는 것만 사유와 함께 리포트에 남긴다. "다 됐습니다"라고 말하기 전에 이 점검을 통과해야 한다.
+규칙: 점검에서 🟡·❌나 미해결 갭이 나오면, **리포트 전에 가능한 것은 즉시 메우고**(해당 단계로 되돌아가 반영 → 재검증), 못 메우는 것만 사유와 함께 리포트에 남긴다. "다 됐습니다"라고 말하기 전에 이 점검을 통과해야 한다. 리포트는 한국어로 작성한다.
 
 ## 8. 비개발자용 보고서 — `descriptions` 주입 (E단계 권장)
 보고서는 비개발자가 본다. T-Box/A-Box 설명·Mermaid 다이어그램은 자동 생성되지만,

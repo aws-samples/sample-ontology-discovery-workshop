@@ -2,7 +2,7 @@
 name: ontoforge-workshop
 description: 고객 디스커버리 워크샵을 실시간 온톨로지로 진행한다. OntoForge 웹 뷰어를 띄우고, 운영자가 전달하는 고객 답변을 너(Claude)가 직접 엔티티/관계/속성으로 구조화해 로컬 그래프에 반영하고, 자연어 질문을 openCypher로 검증한다. 대화는 여기(Claude Code)서 하고 그림은 브라우저에 그려진다. "온톨로지 워크샵", "OntoForge", "고객이랑 온톨로지 그리자", "워크샵 시작" 등에 사용.
 copyright: Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-license: MIT-0
+license: Apache-2.0
 ---
 
 # OntoForge 워크샵 운영 Skill

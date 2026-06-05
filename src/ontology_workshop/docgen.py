@@ -7,7 +7,7 @@ from .graph import OntologyGraph
 
 def render_markdown(g: OntologyGraph, title: str = "온톨로지") -> str:
     tb = g.tbox()
-    lines: list[str] = [f"# {title}", "", "## 엔티티 (T-Box)", ""]
+    lines: list[str] = [f"# {title}", "", "## 엔티티 타입 (T-Box)", ""]
 
     for name, et in tb["entities"].items():
         lines.append(f"### {name}")
@@ -18,7 +18,7 @@ def render_markdown(g: OntologyGraph, title: str = "온톨로지") -> str:
                 lines.append(f"  - `{k}`: {v}")
         lines.append("")
 
-    lines += ["## 관계 (T-Box)", ""]
+    lines += ["## 관계 타입 (T-Box)", ""]
     for name, rt in tb["relations"].items():
         card = rt.get("cardinality", "N:M")
         lines.append(f"- **{rt['src']}** —`{name}`({card})→ **{rt['dst']}**")
