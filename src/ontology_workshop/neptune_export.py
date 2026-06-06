@@ -38,19 +38,21 @@ def export_opencypher(g: OntologyGraph, path: str,
     path = safe_export_path(path)
     snap = g.snapshot()
     lines = []
-    for n in snap["nodes"]:
+    for idx, n in enumerate(snap["nodes"]):
         d = n["data"]
-        props = {"_etype": _m(d["etype"], schema_map),
+        label = _m(d["etype"], schema_map)
+        props = {"~id": d["id"], "_etype": label,
                  **{_m(k, schema_map): v for k, v in d["props"].items()}}
-        kv = ", ".join(f"{k}: {_lit(v)}" for k, v in props.items())
-        lines.append(f"CREATE (`{d['id']}`:{_m(d['etype'], schema_map)} {{{kv}}})")
+        kv = ", ".join(f"{_prop_key(k)}: {_lit(v)}" for k, v in props.items())
+        lines.append(f"CREATE ({_alias(idx)}:{label} {{{kv}}})")
     for e in snap["edges"]:
         d = e["data"]
         eprops = {_m(k, schema_map): v for k, v in d["props"].items()}
-        kv = ", ".join(f"{k}: {_lit(v)}" for k, v in eprops.items())
+        kv = ", ".join(f"{_prop_key(k)}: {_lit(v)}" for k, v in eprops.items())
         propblock = f" {{{kv}}}" if kv else ""
         lines.append(
-            f"MATCH (a {{`~id`: '{d['source']}'}}), (b {{`~id`: '{d['target']}'}}) "
+            f"MATCH (a {{`~id`: {_lit(d['source'])}}}), "
+            f"(b {{`~id`: {_lit(d['target'])}}}) "
             f"CREATE (a)-[:{_m(d['label'], schema_map)}{propblock}]->(b)"
         )
     text = ";\n".join(lines) + ";\n"
@@ -96,8 +98,20 @@ def export_bulk_csv(g: OntologyGraph, outdir: str,
 
 
 def _lit(v) -> str:
+    if v is None:
+        return "null"
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, (int, float)):
         return str(v)
-    return "'" + str(v).replace("'", "\\'") + "'"
+    return "'" + str(v).replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+def _alias(index: int) -> str:
+    return f"n{index}"
+
+
+def _prop_key(name: str) -> str:
+    if name == "~id":
+        return "`~id`"
+    return validate_identifier(name, "Cypher property key")
