@@ -71,11 +71,27 @@ PYTHONPATH=src uvicorn ontology_workshop.server:app --reload
 
 ## Persistence and Restore
 
-Workshop data is persisted in `workshop.kuzu` by default. Restart the server without `ONTOFORGE_FRESH=1` to continue the existing workshop.
+Workshop data is persisted in `workshop.kuzu` by default. Restart the server without `ONTOFORGE_FRESH=1` to continue the existing workshop:
 
-OntoForge also writes an autosave snapshot to `exports/session/workshop_snapshot.json` after graph, narration, query, import, reset, or report changes. On startup, if the Kuzu graph is empty, the server restores from this autosave automatically. If you intentionally want a blank workshop, call `POST /reset` from the UI or curl after the server starts.
+```bash
+PYTHONPATH=src uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
+```
+
+On a normal restart, OntoForge reloads:
+
+- graph schema and instance data from `workshop.kuzu`;
+- workshop feed and verified queries from `exports/session/workshop_snapshot.json`;
+- the latest graph state from the autosave snapshot if the Kuzu graph is empty.
+
+OntoForge writes the autosave snapshot after graph, narration, query, import, reset, or report changes. This means a workshop can usually be recovered by starting the server again with the normal command above.
 
 Use `ONTOFORGE_FRESH=1` only when you explicitly want to delete the local Kuzu database at startup. If a fresh start was used accidentally and the autosave file still exists, restart without `ONTOFORGE_FRESH=1`; the server can rebuild the graph from `exports/session/workshop_snapshot.json`.
+
+If you intentionally want a blank workshop, start the server normally and then use the UI reset button or call:
+
+```bash
+curl -X POST http://localhost:8000/reset
+```
 
 ## Conversation Skill
 
