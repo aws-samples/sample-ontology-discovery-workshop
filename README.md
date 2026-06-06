@@ -4,6 +4,10 @@
 
 OntoForge is a local workshop tool for building and validating an ontology while talking with a customer. The agreed ontology can later be promoted to Amazon Neptune as the basis for a production graph data model.
 
+## Demo
+
+![OntoForge demo](./images/demo.gif)
+
 ## What It Does
 
 1. Extracts entities, relations, and properties from workshop conversation and writes them to **Kuzu**, an embedded property graph database.
