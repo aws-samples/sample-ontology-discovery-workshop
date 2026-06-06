@@ -49,7 +49,7 @@ curl -s http://localhost:8000/snapshot >/dev/null 2>&1 || \
    --host 127.0.0.1 --port 8000 > /tmp/ontoforge.log 2>&1 &)
 ```
 
-Do not set `ONTOFORGE_FRESH=1` for normal restarts; it deletes the local Kuzu database before startup. Existing graph data is loaded from `workshop.kuzu`, and feed/query state is restored from `exports/session/workshop_snapshot.json` when needed.
+Do not set `ONTOFORGE_FRESH=1` for normal restarts; it deletes the local Kuzu database before startup. A normal restart reloads graph schema and instances from `workshop.kuzu`, reloads feed/query state from `exports/session/workshop_snapshot.json`, and can rebuild the graph from that autosave if Kuzu is empty.
 
 When ready, tell the operator to open `http://localhost:8000`. For a new customer, reset the graph explicitly with:
 

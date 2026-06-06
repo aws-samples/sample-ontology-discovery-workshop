@@ -58,11 +58,27 @@ PYTHONPATH=src uvicorn ontology_workshop.server:app --reload
 ```
 
 ### 유지/복원
-워크샵 데이터는 기본적으로 `workshop.kuzu`에 저장됩니다. 서버를 내렸다 다시 올릴 때는 `ONTOFORGE_FRESH=1`을 넣지 않으면 기존 워크샵을 이어서 불러옵니다.
+워크샵 데이터는 기본적으로 `workshop.kuzu`에 저장됩니다. 기존 워크샵을 이어서 불러오려면 `ONTOFORGE_FRESH=1` 없이 서버를 다시 시작하세요.
 
-그래프·진행 로그·검증 질의가 바뀔 때마다 `exports/session/workshop_snapshot.json`에도 자동 저장됩니다. 서버 시작 시 Kùzu 그래프가 비어 있으면 이 autosave 스냅샷에서 자동 복원합니다. 새 워크샵을 명시적으로 시작하려면 서버 기동 후 UI의 reset 버튼 또는 `POST /reset`을 사용하세요.
+```bash
+PYTHONPATH=src uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
+```
+
+정상 재시작 시 OntoForge는 다음 데이터를 다시 로드합니다.
+
+- 그래프 스키마와 인스턴스 데이터: `workshop.kuzu`
+- 워크샵 진행 피드와 검증 질의: `exports/session/workshop_snapshot.json`
+- Kùzu 그래프가 비어 있는 경우: autosave 스냅샷의 최신 그래프 상태
+
+그래프·진행 로그·검증 질의·import·reset·report가 바뀔 때마다 `exports/session/workshop_snapshot.json`에 자동 저장됩니다. 따라서 대부분의 워크샵은 위 정상 시작 명령으로 다시 복구할 수 있습니다.
 
 `ONTOFORGE_FRESH=1`은 시작 시 로컬 Kùzu DB를 삭제해야 할 때만 사용하세요. 실수로 fresh 실행을 했다면 autosave 파일이 남아 있는 동안 `ONTOFORGE_FRESH=1` 없이 다시 시작하면 복원할 수 있습니다.
+
+새 워크샵을 명시적으로 시작하려면 서버를 정상 기동한 뒤 UI의 reset 버튼을 누르거나 다음 명령을 호출하세요.
+
+```bash
+curl -X POST http://localhost:8000/reset
+```
 
 ### 대화 스킬 (M1)
 좌측 패널에서 고객 답변을 받아적고 스킬을 실행하면 엔티티·관계가 자동으로

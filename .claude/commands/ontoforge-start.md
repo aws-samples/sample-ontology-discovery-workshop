@@ -30,6 +30,6 @@ Start or recover the local OntoForge server for a localhost-only workshop.
 
 - If `.venv/bin/uvicorn` is missing, install dependencies from `requirements.txt` first.
 - Do not use `ONTOFORGE_FRESH=1` for normal restarts. It deletes `workshop.kuzu`; use `/reset` only when the operator explicitly wants a blank workshop.
-- The server autosaves workshop state to `exports/session/workshop_snapshot.json` and restores it on startup when the graph is empty.
+- Normal restarts reload graph schema and instances from `workshop.kuzu`, feed/query state from `exports/session/workshop_snapshot.json`, and rebuild from autosave if Kuzu is empty.
 - Use token mode only when the user explicitly requests shared-network or auth testing.
 - For actual workshop operation, follow `.claude/skills/ontoforge-workshop/SKILL.md`.

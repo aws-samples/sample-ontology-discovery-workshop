@@ -58,11 +58,27 @@ PYTHONPATH=src uvicorn ontology_workshop.server:app --reload
 ```
 
 ### 永続化と復元
-ワークショップデータはデフォルトで `workshop.kuzu` に保存されます。サーバーを再起動して既存ワークショップを続ける場合は、`ONTOFORGE_FRESH=1` を付けずに起動してください。
+ワークショップデータはデフォルトで `workshop.kuzu` に保存されます。既存ワークショップを続ける場合は、`ONTOFORGE_FRESH=1` を付けずにサーバーを再起動してください。
 
-グラフ、進行ログ、検証クエリ、インポート、リセット、レポートが変更されるたびに `exports/session/workshop_snapshot.json` にも自動保存されます。起動時に Kùzu グラフが空の場合、サーバーはこの autosave スナップショットから自動復元します。明示的に新しいワークショップを始める場合は、起動後に UI の reset ボタンまたは `POST /reset` を使用してください。
+```bash
+PYTHONPATH=src uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
+```
+
+通常の再起動では、OntoForge は次のデータを再ロードします。
+
+- グラフスキーマとインスタンスデータ: `workshop.kuzu`
+- ワークショップフィードと検証済みクエリ: `exports/session/workshop_snapshot.json`
+- Kùzu グラフが空の場合: autosave スナップショットの最新グラフ状態
+
+グラフ、進行ログ、検証クエリ、インポート、リセット、レポートが変更されるたびに `exports/session/workshop_snapshot.json` に自動保存されます。そのため、多くの場合は上記の通常起動コマンドだけでワークショップを復元できます。
 
 `ONTOFORGE_FRESH=1` は起動時にローカル Kùzu DB を削除したい場合のみ使用してください。誤って fresh 起動した場合でも、autosave ファイルが残っていれば `ONTOFORGE_FRESH=1` なしで再起動すると復元できます。
+
+明示的に新しいワークショップを始める場合は、サーバーを通常起動した後に UI の reset ボタンを使うか、次を呼び出してください。
+
+```bash
+curl -X POST http://localhost:8000/reset
+```
 
 ### 対話スキル（M1）
 左パネルで顧客の回答を書き取り、スキルを実行すると、エンティティ・関係が自動的に
