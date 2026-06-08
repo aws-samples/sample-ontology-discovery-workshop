@@ -15,6 +15,7 @@ import os
 import zipfile
 from contextlib import asynccontextmanager
 from ipaddress import ip_address
+from typing import Literal
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -290,10 +291,10 @@ class SkillIn(BaseModel):
 class NarrateIn(BaseModel):
     """Claude Code → 브라우저 진행 로그 푸시.
     kind: chat(대화) | reflect(반영 서머리) | qa(쿼리 Q&A) | note(메모) | system."""
-    kind: str = "note"
+    kind: Literal["chat", "reflect", "qa", "note", "system"] = "note"
     title: str = ""
     text: str = ""
-    role: str = "agent"   # operator | customer | agent | system
+    role: Literal["operator", "customer", "agent", "system"] = "agent"
     meta: dict = {}
 
 
