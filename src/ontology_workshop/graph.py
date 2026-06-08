@@ -292,23 +292,40 @@ class OntologyGraph:
         return {"ok": True, "reset": True}
 
     # ---- 질의 -------------------------------------------------------
+    def _readonly_query(self, cypher: str, parameters: dict | None = None,
+                        max_rows: int | None = MAX_ROWS,
+                        audit: bool = True) -> dict:
+        cypher = validate_readonly_cypher(cypher)
+        res = self.conn.execute(cypher, parameters=parameters or {})
+        cols = res.get_column_names()
+        rows = []
+        truncated = False
+        while res.has_next():
+            if max_rows is not None and len(rows) >= max_rows:
+                truncated = True
+                break
+            rows.append(res.get_next())
+        if audit:
+            audit_log("query_executed", rows=len(rows), truncated=truncated)
+        return {"ok": True, "columns": cols, "rows": rows,
+                "count": len(rows), "truncated": truncated}
+
     def query(self, cypher: str, parameters: dict | None = None,
               max_rows: int = MAX_ROWS) -> dict:
         try:
-            cypher = validate_readonly_cypher(cypher)
-            res = self.conn.execute(cypher, parameters=parameters or {})
-            cols = res.get_column_names()
-            rows = []
-            truncated = False
-            while res.has_next():
-                if len(rows) >= max_rows:
-                    truncated = True
-                    break
-                rows.append(res.get_next())
-            audit_log("query_executed", rows=len(rows), truncated=truncated)
-            return {"ok": True, "columns": cols, "rows": rows,
-                    "count": len(rows), "truncated": truncated}
+            return self._readonly_query(cypher, parameters, max_rows=max_rows)
         except Exception as e:  # noqa: BLE001 - surface to UI
+            return {"ok": False, "error": str(e), "cypher": cypher}
+
+    def _query_all(self, cypher: str, parameters: dict | None = None) -> dict:
+        """Internal read path for operational snapshots and exports.
+
+        Public user-submitted queries remain capped by query().
+        """
+        try:
+            return self._readonly_query(
+                cypher, parameters, max_rows=None, audit=False)
+        except Exception as e:  # noqa: BLE001 - keep snapshot behavior tolerant
             return {"ok": False, "error": str(e), "cypher": cypher}
 
     # ---- 시각화용 스냅샷 -------------------------------------------
@@ -316,7 +333,7 @@ class OntologyGraph:
         """현재 A-Box 전체를 Cytoscape elements 형태로 반환."""
         nodes, edges = [], []
         for etype, et in self.entity_types.items():
-            r = self.query(f"MATCH (n:{etype}) RETURN n")
+            r = self._query_all(f"MATCH (n:{etype}) RETURN n")
             for row in r.get("rows", []):
                 n = row[0]
                 pk = n.get(et.primary_key)
@@ -327,7 +344,7 @@ class OntologyGraph:
         for rtype, rt in self.relation_types.items():
             spk = self.entity_types[rt.src].primary_key
             dpk = self.entity_types[rt.dst].primary_key
-            r = self.query(
+            r = self._query_all(
                 f"MATCH (a:{rt.src})-[e:{rtype}]->(b:{rt.dst}) "
                 f"RETURN a.{spk}, b.{dpk}, e"
             )
