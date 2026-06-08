@@ -541,10 +541,10 @@ async def export_report(body: ReportIn | None = None):
     # 단독 실행 스냅샷 뷰어 + 복원용 JSON 함께 생성
     res["snapshot_viewer"] = sx.export_static_viewer(
         g, os.path.join(REPORT_DIR, "workshop_snapshot.html"),
-        narrations, verified_queries, body.title)
+        narrations, verified_queries, title)
     res["snapshot_json"] = sx.export_snapshot_json(
         g, os.path.join(REPORT_DIR, "workshop_snapshot.json"),
-        narrations, verified_queries, body.title)
+        narrations, verified_queries, title)
     audit_log("report_exported", title=title, lang=lang)
     return res
 
