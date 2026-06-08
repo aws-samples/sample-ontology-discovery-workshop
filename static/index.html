@@ -341,18 +341,19 @@ function initCy(){
   cy.on('tap','node',e=>{
     const d=e.target.data();
     lastSelection={kind:'node',d};
+    const props=Object.entries(d.props||{}).map(([k,v])=>`${esc(k)}: <b>${esc(v)}</b>`).join('<br>')||t('noProps');
     document.getElementById('insp').innerHTML=
-      `<b>${d.label}</b> · <span style="color:${colorFor(d.etype)}">${d.etype||t('type')}</span><br>`+
-      (Object.entries(d.props||{}).map(([k,v])=>`${k}: <b>${v}</b>`).join('<br>')||t('noProps'));
+      `<b>${esc(d.label)}</b> · <span style="color:${colorFor(d.etype)}">${esc(d.etype||t('type'))}</span><br>`+
+      props;
   });
   // 엣지 클릭 → 관계 속성(점수 등) 표시
   cy.on('tap','edge',e=>{
     const d=e.target.data();
     lastSelection={kind:'edge',d};
-    const props=Object.entries(d.props||{}).map(([k,v])=>`${k}: <b>${v}</b>`).join('<br>')||t('noProps');
+    const props=Object.entries(d.props||{}).map(([k,v])=>`${esc(k)}: <b>${esc(v)}</b>`).join('<br>')||t('noProps');
     document.getElementById('insp').innerHTML=
-      `<b style="color:var(--accent2)">${d.label}</b> <span style="color:var(--muted)">${t('relation')}</span><br>`+
-      `<span style="color:var(--muted)">${(d.source||'').split(':').pop()} → ${(d.target||'').split(':').pop()}</span><br>`+props;
+      `<b style="color:var(--accent2)">${esc(d.label)}</b> <span style="color:var(--muted)">${t('relation')}</span><br>`+
+      `<span style="color:var(--muted)">${esc((d.source||'').split(':').pop())} → ${esc((d.target||'').split(':').pop())}</span><br>`+props;
     cy.elements().removeClass('hl'); e.target.addClass('hl');
   });
   cy.on('tap',e=>{ if(e.target===cy) cy.elements().removeClass('hl'); });
@@ -433,16 +434,20 @@ function updateSummary(){
   document.getElementById('nEnt').textContent=Object.keys(ents).length;
   document.getElementById('nRel').textContent=Object.keys(rels).length;
   document.getElementById('ents').innerHTML=
-    Object.keys(ents).map(k=>`<span class="pill"><span class="dotc" style="background:${colorFor(k)}"></span>${k}</span>`).join('')
+    Object.keys(ents).map(k=>`<span class="pill"><span class="dotc" style="background:${colorFor(k)}"></span>${esc(k)}</span>`).join('')
     ||`<span style="color:var(--muted);font-size:11px">${t('none')}</span>`;
   document.getElementById('rels').innerHTML=
-    Object.values(rels).map(r=>`<span class="pill r">${r.name}</span>`).join('')
+    Object.values(rels).map(r=>`<span class="pill r">${esc(r.name)}</span>`).join('')
     ||`<span style="color:var(--muted);font-size:11px">${t('none')}</span>`;
 }
 
 // ---- 진행 피드 ----
 let feedItems=[];   // 원본 보관 → 언어 전환 시 전체 재렌더
-function roleLabel(role){ return t('role'+role.charAt(0).toUpperCase()+role.slice(1)) || role; }
+const FEED_KINDS=new Set(['chat','reflect','qa','note','system']);
+const FEED_ROLES=new Set(['operator','customer','agent','system']);
+function safeFeedKind(kind){ return FEED_KINDS.has(kind) ? kind : 'note'; }
+function safeFeedRole(role){ return FEED_ROLES.has(role) ? role : 'agent'; }
+function roleLabel(role){ const r=safeFeedRole(role); return t('role'+r.charAt(0).toUpperCase()+r.slice(1)) || r; }
 function clearFeed(){ feedItems=[]; renderFeed(); }
 function renderFeed(){
   const feed=document.getElementById('feed');
@@ -459,20 +464,22 @@ function addFeed(it){
   feed.scrollTop=feed.scrollHeight;
 }
 function buildFeedEl(it){
-  const kind=it.kind||'note';
+  const kind=safeFeedKind(it.kind||'note');
+  const role=safeFeedRole(it.role||'agent');
   const div=document.createElement('div');
   div.className='item k-'+kind;
   let inner=`<div class="meta"><span class="tag">${kind}</span>`;
-  if(it.role && kind==='chat') inner+=`<span class="role-${it.role}">${roleLabel(it.role)}</span>`;
+  if(it.role && kind==='chat') inner+=`<span class="role-${role}">${esc(roleLabel(role))}</span>`;
   if(it.title) inner+=`<span>${esc(it.title)}</span>`;
-  inner+=`<span class="ts">${it.ts||''}</span></div>`;
+  inner+=`<span class="ts">${esc(it.ts||'')}</span></div>`;
 
   if(kind==='qa'){
     const m=it.meta||{};
     inner+=`<div class="body">${md(it.text||it.title||'')}</div>`;
     if(m.cypher) inner+=`<pre>${esc(m.cypher)}</pre>`;
     if(m.count!=null){
-      inner+=`<div class="qa-res"><div class="cnt">✓ ${m.count} ${t('rows')}${m.columns?' · ['+m.columns.join(', ')+']':''}</div>`;
+      const cols=Array.isArray(m.columns) ? m.columns.map(c=>esc(c)).join(', ') : '';
+      inner+=`<div class="qa-res"><div class="cnt">✓ ${esc(m.count)} ${t('rows')}${cols?' · ['+cols+']':''}</div>`;
       (m.rows||[]).slice(0,8).forEach(r=>inner+=`<div class="row">${esc(typeof r==='string'?r:JSON.stringify(r))}</div>`);
       inner+=`</div>`;
     }
