@@ -24,10 +24,11 @@ Finalize a workshop, verify gates, and generate report plus Neptune export artif
    curl -s -X POST http://localhost:8000/export/report -H 'Content-Type: application/json' -d @/tmp/ontoforge-report.json
    curl -s -X POST http://localhost:8000/export/neptune
    ```
-6. Verify the expected outputs under `exports/report/` and `exports/neptune/`, then summarize:
+6. Verify the expected outputs, then summarize:
    - report HTML/Markdown/DOCX paths
    - snapshot HTML/JSON paths
-   - Neptune openCypher and bulk CSV paths
+   - Neptune openCypher and bulk CSV paths from `/export/report`: `exports/report/neptune.cypher` and `exports/report/bulk/`
+   - Neptune openCypher and bulk CSV paths from `/export/neptune`: `exports/neptune.cypher` and `exports/bulk/`
    - `/download/workshop.zip`
 
 ## Rules
