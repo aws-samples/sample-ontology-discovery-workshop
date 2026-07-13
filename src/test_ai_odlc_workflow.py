@@ -119,6 +119,18 @@ def main():
     assert_equal(len(enriched["validation_queries"]), 2)
     if "MATCH (a:Product)" not in enriched["validation_queries"][0]["query"]:
         raise AssertionError("openCypher query seed should use expected answer shape")
+    guided.record_query_verification(
+        "Which Product instances are connected to SupplierLot instances?",
+        enriched["validation_queries"][0]["query"],
+        {"ok": True, "count": 3, "columns": ["a", "r", "b"]},
+    )
+    verified = guided.to_dict({
+        "graph": {"entities": 2, "relations": 1, "nodes": 0, "edges": 0},
+        "entity_names": ["Product", "SupplierLot"],
+        "verified_count": 1,
+    })
+    assert_equal(verified["validation_queries"][0]["status"], "verified")
+    assert_equal(verified["competency_questions"][0]["query_readiness"], "verified")
 
     review = guided.generate_review({
         "graph": {"entities": 2, "relations": 1, "nodes": 0, "edges": 0},

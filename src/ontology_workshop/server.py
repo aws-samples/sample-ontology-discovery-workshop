@@ -638,7 +638,8 @@ async def run_skill(s: SkillIn):
         if qres.get("ok"):
             verified_queries.append(
                 {"question": question, "cypher": cypher, "count": qres["count"]})
-            _autosave_session()
+        workflow.record_query_verification(question, cypher, qres)
+        _autosave_session()
         return _json(out)
 
     if s.apply:
@@ -693,7 +694,8 @@ async def run_query(q: QueryIn):
             verified_queries.append(
                 {"question": q.question, "cypher": q.cypher,
                  "count": r.get("count", 0)})
-            _autosave_session()
+        workflow.record_query_verification(q.question, q.cypher, r)
+        _autosave_session()
     return _json(r)
 
 

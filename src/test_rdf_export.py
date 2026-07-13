@@ -39,6 +39,11 @@ def main():
             "target": "Product.id",
             "status": "available",
         }],
+        "rdf_decisions": [{
+            "topic": "base_iri",
+            "value": "https://example.com/test-ontology/",
+            "status": "candidate",
+        }],
     }
     result = rdf_export.export_all(
         g, out, workflow, "https://example.com/test-ontology/")
@@ -50,6 +55,7 @@ def main():
     shapes = open(result["shacl"], encoding="utf-8").read()
     sparql = open(result["sparql"], encoding="utf-8").read()
     mapping = open(result["mapping"], encoding="utf-8").read()
+    handoff = open(result["neptune_rdf_handoff"], encoding="utf-8").read()
     data = json.load(open(result["jsonld"], encoding="utf-8"))
 
     require(":Product a owl:Class" in ontology, "Product class missing")
@@ -59,6 +65,8 @@ def main():
     require("sh:targetClass :Product" in shapes, "Product SHACL shape missing")
     require("Which supplier lots" in sparql, "competency question missing from SPARQL")
     require("quality_inspection" in mapping, "field mapping missing")
+    require("Neptune RDF Handoff" in handoff, "Neptune RDF handoff note missing")
+    require("Captured RDF Decisions" in handoff, "RDF decisions missing from handoff")
     require(len(data.get("@graph", [])) == 3, "JSON-LD graph should include two nodes and one edge")
     print("RDF export checks passed")
 

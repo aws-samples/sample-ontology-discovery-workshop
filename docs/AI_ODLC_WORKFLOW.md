@@ -615,9 +615,9 @@ Property graph export should remain supported. The workflow should produce both 
 
 ## v2 Implementation Status
 
-The v2 implementation delivers a working AI-ODLC vertical slice: server-side workflow state, deterministic answer processing, workflow REST endpoints, evidence-aware next-question generation, automatic adversarial review generation, workflow state in snapshot/autosave/import/report paths, an interactive browser AI-ODLC cockpit, AI-ODLC report sections, updated Claude/Kiro workshop skill instructions, RDF/SHACL handoff export, and smoke/unit checks.
+The v2 implementation delivers a working AI-ODLC vertical slice: server-side workflow state, deterministic answer processing, workflow REST endpoints, evidence-aware next-question generation, automatic adversarial review generation, query verification evidence tracking, workflow state in snapshot/autosave/import/report paths, an interactive browser AI-ODLC cockpit, AI-ODLC report sections, updated Claude/Kiro workshop skill instructions, RDF/SHACL handoff export, Neptune RDF follow-up notes, and smoke/unit checks.
 
-RDF/SHACL support in v2 is intentionally a handoff layer, not production reasoning. It generates Turtle, JSON-LD, SHACL seed shapes, SPARQL seed queries, and mapping notes. Full SPARQL execution/validation, OWL reasoning, named graph policy, and production-grade SHACL constraint design remain follow-up work.
+RDF/SHACL support in v2 is intentionally a handoff layer, not production reasoning. It generates Turtle, JSON-LD, SHACL seed shapes, SPARQL seed queries, mapping notes, and Neptune RDF follow-up notes. Full SPARQL execution/validation, OWL reasoning, named graph policy, and production-grade SHACL constraint design remain follow-up work.
 
 ### Phase 1: Documented Workflow and Agent Skill
 

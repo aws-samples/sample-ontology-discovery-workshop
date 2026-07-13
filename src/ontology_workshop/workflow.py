@@ -607,6 +607,48 @@ class WorkflowState:
 
         return self.add_review(findings, assumptions, risks, action_items)
 
+    def record_query_verification(self, question: str | None, cypher: str,
+                                  result: dict[str, Any]) -> dict[str, Any]:
+        """Attach openCypher execution evidence to matching workflow query seeds."""
+        question = (question or "").strip()
+        cypher = (cypher or "").strip()
+        if not question and not cypher:
+            return {"updated": 0}
+        ok = bool(result.get("ok"))
+        evidence = {
+            "verified_at": _now(),
+            "ok": ok,
+            "count": result.get("count", 0),
+            "columns": result.get("columns", []),
+            "error": result.get("error"),
+        }
+        updated = 0
+        for item in _list(self.data.get("validation_queries")):
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("language", "")).lower() != "opencypher":
+                continue
+            if not _query_matches(item, question, cypher):
+                continue
+            item["status"] = "verified" if ok else "failed"
+            item["readiness"] = "verified" if ok else "needs_fix"
+            item.setdefault("verification_evidence", [])
+            item["verification_evidence"].append(evidence)
+            item["updated_at"] = _now()
+            updated += 1
+        for q in _list(self.data.get("competency_questions")):
+            if not isinstance(q, dict):
+                continue
+            qtext = q.get("question") or q.get("text") or ""
+            if question and _norm_value(qtext) == _norm_value(question):
+                q["query_readiness"] = "verified" if ok else "needs_fix"
+                q["verification_status"] = "verified" if ok else "failed"
+                q["last_verification"] = evidence
+                q["updated_at"] = _now()
+        if updated:
+            self.touch()
+        return {"updated": updated, "evidence": evidence}
+
     def gates(self, context: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
         ctx = context or {}
         graph = _dict(ctx.get("graph"))
@@ -721,6 +763,14 @@ def _gate(ok: bool, missing: list[str],
           evidence: dict[str, Any] | None = None) -> dict[str, Any]:
     status = "pass" if ok else ("partial" if evidence and any(evidence.values()) else "fail")
     return {"status": status, "missing": missing, "evidence": evidence or {}}
+
+
+def _query_matches(item: dict[str, Any], question: str, cypher: str) -> bool:
+    if question and _norm_value(item.get("question")) == _norm_value(question):
+        return True
+    if cypher and _norm_value(item.get("query")) == _norm_value(cypher):
+        return True
+    return False
 
 
 def infer_workflow_items(text: str, stage: str,

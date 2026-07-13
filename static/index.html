@@ -129,6 +129,15 @@
   .odlc-actions button:hover{border-color:var(--accent2);color:var(--ink)}
   .odlc-actions button.primary{grid-column:1 / -1;border-color:#1d5e4c;color:var(--accent);background:#0f1f1a}
   .odlc-status{font-size:10px;color:var(--muted);line-height:1.4;margin-top:7px;min-height:14px}
+  .odlc-detail{margin-top:9px;display:grid;gap:6px}
+  .odlc-mini{background:#0a0f16;border:1px solid var(--line);border-radius:7px;padding:7px}
+  .odlc-mini .k{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+  .odlc-mini .v{font-size:11px;color:var(--ink);line-height:1.4;word-break:break-word}
+  .odlc-mini .meta{font-size:10px;color:var(--muted);margin-top:3px}
+  .odlc-mini .status{float:right;border-radius:99px;padding:1px 6px;border:1px solid var(--line);font-size:9px}
+  .odlc-mini .status.verified,.odlc-mini .status.available,.odlc-mini .status.confirmed{border-color:#1d5e4c;color:var(--accent)}
+  .odlc-mini .status.missing,.odlc-mini .status.failed,.odlc-mini .status.conflicting{border-color:#5a2730;color:#ff8aa0}
+  .odlc-mini .status.unknown,.odlc-mini .status.partial,.odlc-mini .status.candidate{border-color:#5e4a1d;color:var(--warn)}
 </style>
 </head>
 <body>
@@ -219,6 +228,7 @@
           </div>
           <div class="odlc-status" id="wfStatus"></div>
         </div>
+        <div class="odlc-detail" id="wfDetail"></div>
       </div>
     </div>
     <div class="sec"><h3 data-i18n="hEnt">엔티티 타입</h3><div id="ents"></div></div>
@@ -403,18 +413,20 @@ function initCy(){
     const d=e.target.data();
     lastSelection={kind:'node',d};
     const props=Object.entries(d.props||{}).map(([k,v])=>`${esc(k)}: <b>${esc(v)}</b>`).join('<br>')||t('noProps');
+    const links=workflowLinksFor(d.etype, d.label);
     document.getElementById('insp').innerHTML=
       `<b>${esc(d.label)}</b> · <span style="color:${colorFor(d.etype)}">${esc(d.etype||t('type'))}</span><br>`+
-      props;
+      props + links;
   });
   // 엣지 클릭 → 관계 속성(점수 등) 표시
   cy.on('tap','edge',e=>{
     const d=e.target.data();
     lastSelection={kind:'edge',d};
     const props=Object.entries(d.props||{}).map(([k,v])=>`${esc(k)}: <b>${esc(v)}</b>`).join('<br>')||t('noProps');
+    const links=workflowLinksFor(d.label, d.label);
     document.getElementById('insp').innerHTML=
       `<b style="color:var(--accent2)">${esc(d.label)}</b> <span style="color:var(--muted)">${t('relation')}</span><br>`+
-      `<span style="color:var(--muted)">${esc((d.source||'').split(':').pop())} → ${esc((d.target||'').split(':').pop())}</span><br>`+props;
+      `<span style="color:var(--muted)">${esc((d.source||'').split(':').pop())} → ${esc((d.target||'').split(':').pop())}</span><br>`+props+links;
     cy.elements().removeClass('hl'); e.target.addClass('hl');
   });
   cy.on('tap',e=>{ if(e.target===cy) cy.elements().removeClass('hl'); });
@@ -536,6 +548,52 @@ function updateWorkflow(){
   if(status && wf.last_extraction && wf.last_extraction.summary){
     status.textContent=wf.last_extraction.summary;
   }
+  renderWorkflowDetail(wf);
+}
+
+function renderWorkflowDetail(wf){
+  const box=document.getElementById('wfDetail');
+  if(!box) return;
+  const cards=[];
+  (wf.competency_questions||[]).slice(0,3).forEach(q=>cards.push(miniCard(
+    'question', q.question||q.text||'-', q.query_readiness||q.status||'candidate',
+    (q.expected_answer_shape||[]).join(', '))));
+  (wf.field_mappings||[]).slice(0,3).forEach(m=>cards.push(miniCard(
+    'mapping', `${m.source||'-'}.${m.source_field||'-'} → ${m.target||'-'}`,
+    m.status||m.readiness||'unknown', m.owner||m.freshness||'')));
+  (wf.validation_queries||[]).slice(0,3).forEach(v=>cards.push(miniCard(
+    'query', `${v.language||''}: ${v.question||v.question_id||'-'}`,
+    v.readiness||v.status||'candidate', v.query||'')));
+  (wf.risks||[]).slice(0,2).forEach(r=>cards.push(miniCard(
+    'risk', r.text||'-', r.severity||r.status||'open', r.owner||'')));
+  box.innerHTML=cards.join('') || `<div class="odlc-mini"><div class="k">evidence</div><div class="v">${t('none')}</div></div>`;
+}
+
+function miniCard(kind,value,status,meta){
+  const st=String(status||'candidate');
+  return `<div class="odlc-mini"><span class="status ${esc(st)}">${esc(st)}</span><div class="k">${esc(kind)}</div><div class="v">${esc(value)}</div>${meta?`<div class="meta">${esc(meta)}</div>`:''}</div>`;
+}
+
+function workflowLinksFor(primary, secondary){
+  const wf=lastWorkflow||{};
+  const key=String(primary||'').toLowerCase();
+  const alt=String(secondary||'').toLowerCase();
+  if(!key && !alt) return '';
+  const hits=[];
+  const scan=(items,label,fields)=>{
+    (items||[]).forEach(item=>{
+      const hay=fields.map(f=>item[f]).filter(Boolean).join(' ').toLowerCase();
+      if(hay && ((key && hay.includes(key)) || (alt && hay.includes(alt)))){
+        hits.push(`${label}: ${item.question||item.target||item.name||item.text||item.id||''}`);
+      }
+    });
+  };
+  scan(wf.model_candidates,'model',['name','source_element','rationale']);
+  scan(wf.field_mappings,'mapping',['target','source_field','source']);
+  scan(wf.competency_questions,'question',['question','text']);
+  scan(wf.claims,'claim',['text']);
+  if(!hits.length) return '';
+  return '<br><br><span style="color:var(--muted)">AI-ODLC evidence</span><br>'+hits.slice(0,4).map(h=>'• '+esc(h)).join('<br>');
 }
 
 function ensureWorkflowStages(wf){

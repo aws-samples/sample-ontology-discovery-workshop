@@ -41,6 +41,8 @@ def export_all(g: OntologyGraph, outdir: str = "./exports/rdf",
             g, workflow or {}, os.path.join(outdir, "queries.sparql"), base_iri),
         "mapping": export_mapping_md(
             g, workflow or {}, os.path.join(outdir, "rdf_mapping.md"), base_iri),
+        "neptune_rdf_handoff": export_neptune_rdf_handoff_md(
+            g, workflow or {}, os.path.join(outdir, "neptune_rdf_handoff.md"), base_iri),
     }
     audit_log("rdf_bundle_exported", outdir=outdir, base_iri=base_iri)
     return result
@@ -311,6 +313,55 @@ def export_mapping_md(g: OntologyGraph, workflow: dict,
             )
     _write(path, "\n".join(lines).rstrip() + "\n")
     audit_log("rdf_mapping_exported", path=path)
+    return path
+
+
+def export_neptune_rdf_handoff_md(g: OntologyGraph, workflow: dict,
+                                  path: str,
+                                  base_iri: str = DEFAULT_BASE_IRI) -> str:
+    path = safe_export_path(path)
+    base_iri = _base(base_iri)
+    tb = g.tbox()
+    lines = [
+        "# Neptune RDF Handoff Notes",
+        "",
+        f"- Base IRI: {base_iri}",
+        "- Target: Amazon Neptune RDF/SPARQL follow-up, not a completed production load plan.",
+        "- Validate URI generation, named graph strategy, IAM/network posture, loader source S3 layout, and SHACL policy before production use.",
+        "",
+        "## Current RDF Export Bundle",
+        "",
+        "- ontology.ttl: class/property skeleton from the current T-Box.",
+        "- instances.ttl: current A-Box individuals and relationship triples.",
+        "- ontology.jsonld: exchange form for downstream RDF tooling.",
+        "- shapes.ttl: seed SHACL constraints for datatype/key checks.",
+        "- queries.sparql: seed SPARQL queries requiring validation.",
+        "",
+        "## Neptune Follow-up Checklist",
+        "",
+        "- Confirm base IRI and URI stability rules with data owners.",
+        "- Decide whether workshop/source/system partitions require named graphs.",
+        "- Convert seed SHACL shapes into enforceable validation gates.",
+        "- Run SPARQL candidates against a representative Neptune or RDF test store.",
+        "- Decide whether property graph openCypher and RDF/SPARQL exports remain dual deliverables.",
+        "",
+        "## Model Size Snapshot",
+        "",
+        f"- Classes: {len(tb.get('entities', {}))}",
+        f"- Object properties: {len(tb.get('relations', {}))}",
+    ]
+    decisions = workflow.get("rdf_decisions") or []
+    if decisions:
+        lines += ["", "## Captured RDF Decisions", "", "| Topic | Value | Status |", "| --- | --- | --- |"]
+        for item in decisions:
+            lines.append(f"| {item.get('topic', '-')} | {item.get('value', item.get('text', '-'))} | {item.get('status', '-')} |")
+    queries = [q for q in workflow.get("validation_queries") or [] if str(q.get("language", "")).lower() == "sparql"]
+    if queries:
+        lines += ["", "## SPARQL Seeds Requiring Validation", ""]
+        for q in queries[:8]:
+            lines.append(f"- {q.get('question') or q.get('question_id') or 'question'}: {q.get('readiness', 'seed_only')}")
+    _write(path, "\n".join(lines).rstrip() + "\n")
+    audit_log("neptune_rdf_handoff_exported", path=path)
     return path
 
 

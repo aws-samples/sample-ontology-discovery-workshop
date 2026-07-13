@@ -572,6 +572,7 @@ def rdf_handoff_section(workflow: dict | None = None,
         "| exports/report/rdf/shapes.ttl | SHACL seed shapes for datatype and key constraints |",
         "| exports/report/rdf/queries.sparql | Seed SPARQL queries from classes and competency questions |",
         "| exports/report/rdf/rdf_mapping.md | Base IRI, URI rule, class/property mapping, source field mappings |",
+        "| exports/report/rdf/neptune_rdf_handoff.md | Neptune RDF/SPARQL follow-up checklist and captured RDF decisions |",
         "",
         "These are handoff artifacts, not a claim that production RDF/OWL reasoning is complete. "
         "Domain experts should review URI rules, class/property semantics, named graph strategy, "
