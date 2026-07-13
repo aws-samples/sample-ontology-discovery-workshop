@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added AI-ODLC workflow design documentation for a one-day AI-guided ontology discovery lifecycle.
+- Added server-side AI-ODLC workflow state for claims, user stories, domain events, competency questions, model candidates, data sources, field mappings, validation query seeds, RDF decisions, risks, assumptions, decisions, review findings, action items, gates, and coverage.
+- Added workflow REST endpoints for workflow state, claims, stories, events, questions, model candidates, data sources, mappings, validation queries, RDF decisions, reviews, next questions, gates, and coverage.
+- Added deterministic /workflow/answer extraction, evidence-aware next-question generation, and automatic adversarial review generation.
+- Added workflow state to autosave snapshots, import/restore, standalone snapshot HTML, report generation, and the interactive browser AI-ODLC cockpit panel.
+- Added RDF/SHACL handoff exports with Turtle, JSON-LD, SHACL seed shapes, SPARQL seed queries, and RDF mapping notes.
+- Updated Claude/Kiro workshop skill instructions to drive workshops through AI-ODLC workflow evidence and gates.
+
 ## v0.1-beta - 2026-06-06
 
 Initial beta release of OntoForge, a local ontology discovery workshop tool.

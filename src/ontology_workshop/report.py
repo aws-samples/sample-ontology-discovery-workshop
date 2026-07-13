@@ -464,6 +464,134 @@ def handover_section(g: OntologyGraph, open_issues: list[str] | None = None,
     return "\n".join(lines)
 
 
+def ai_odlc_section(workflow: dict | None = None,
+                    lang: str | None = None) -> str:
+    """Render AI-ODLC workflow state for the workshop handoff."""
+    if not workflow:
+        return ""
+
+    stage = workflow.get("stage_label") or workflow.get("current_stage") or "-"
+    progress = workflow.get("progress") or {}
+    percent = progress.get("percent")
+    active_question = workflow.get("active_question") or "-"
+
+    lines = [
+        "## AI-ODLC 워크플로우 상태",
+        "",
+        "이 섹션은 1-day AI 주도 온톨로지 디스커버리 워크숍의 진행 상태, "
+        "검증 게이트, 근거가 필요한 가정, 데이터 매핑 상태를 요약합니다.",
+        "",
+        f"- 현재 단계: **{stage}**",
+        f"- 진행률: **{percent if percent is not None else '-'}%**",
+        f"- 다음 AI 질문: {active_question}",
+        "",
+    ]
+
+    gates = workflow.get("gates") or {}
+    if gates:
+        lines += ["### Gate Summary", "",
+                  "| Gate | Status | Missing | Evidence |",
+                  "| --- | --- | --- | --- |"]
+        for name, gate in gates.items():
+            missing = ", ".join(gate.get("missing") or []) or "-"
+            ev = gate.get("evidence") or {}
+            ev_text = ", ".join(f"{k}={v}" for k, v in ev.items()) or "-"
+            lines.append(f"| {name} | {gate.get('status', '-')} | {missing} | {ev_text} |")
+        lines.append("")
+
+    def table(title: str, items: list[dict], columns: list[tuple[str, str]],
+              limit: int = 8) -> None:
+        if not items:
+            return
+        lines.extend([f"### {title}", ""])
+        lines.append("| " + " | ".join(label for _key, label in columns) + " |")
+        lines.append("| " + " | ".join("---" for _ in columns) + " |")
+        for item in items[:limit]:
+            cells = []
+            for key, _label in columns:
+                value = item.get(key, "")
+                if isinstance(value, (list, dict)):
+                    value = str(value)
+                cells.append(str(value).replace("|", "\\|") or "-")
+            lines.append("| " + " | ".join(cells) + " |")
+        if len(items) > limit:
+            overflow = ["..."] + [f"{len(items) - limit} more item(s)"]
+            overflow += [""] * max(0, len(columns) - len(overflow))
+            lines.append("| " + " | ".join(overflow[:len(columns)]) + " |")
+        lines.append("")
+
+    table("User Stories", workflow.get("user_stories") or [], [
+        ("id", "ID"), ("actor", "Actor"), ("goal", "Goal"),
+        ("decision", "Decision"), ("priority", "Priority"),
+    ], limit=6)
+    table("Competency Questions", workflow.get("competency_questions") or [], [
+        ("id", "ID"), ("question", "Question"),
+        ("expected_answer_shape", "Answer shape"),
+        ("query_readiness", "Query readiness"), ("priority", "Priority"),
+    ], limit=8)
+    table("Validation Query Seeds", workflow.get("validation_queries") or [], [
+        ("id", "ID"), ("language", "Language"), ("question", "Question"),
+        ("readiness", "Readiness"), ("query", "Query"),
+    ], limit=8)
+    table("Data Sources", workflow.get("data_sources") or [], [
+        ("id", "ID"), ("name", "Name"), ("type", "Type"),
+        ("owner", "Owner"), ("freshness", "Freshness"),
+    ], limit=8)
+    table("Field Mappings", workflow.get("field_mappings") or [], [
+        ("id", "ID"), ("source", "Source"), ("source_field", "Source field"),
+        ("target", "Target"), ("status", "Status"),
+    ], limit=10)
+    table("Risks and Assumptions", (workflow.get("risks") or [])
+          + (workflow.get("assumptions") or []), [
+        ("id", "ID"), ("text", "Text"), ("status", "Status"), ("owner", "Owner"),
+    ], limit=10)
+    table("Action Items", workflow.get("action_items") or [], [
+        ("id", "ID"), ("text", "Action"), ("owner", "Owner"), ("status", "Status"),
+    ], limit=10)
+    table("RDF Decisions", workflow.get("rdf_decisions") or [], [
+        ("id", "ID"), ("topic", "Topic"), ("value", "Value"),
+        ("status", "Status"), ("text", "Note"),
+    ], limit=8)
+
+    return "\n".join(lines).rstrip()
+
+
+def rdf_handoff_section(workflow: dict | None = None,
+                        lang: str | None = None) -> str:
+    """Describe RDF/SHACL handoff artifacts generated with the report."""
+    lines = [
+        "## RDF / SHACL 인계 산출물",
+        "",
+        "AI-ODLC 상태와 현재 T-Box/A-Box를 기준으로 RDF 계열 산출물을 함께 생성합니다.",
+        "",
+        "| Artifact | Purpose |",
+        "| --- | --- |",
+        "| exports/report/rdf/ontology.ttl | RDF/OWL class, object property, datatype property skeleton |",
+        "| exports/report/rdf/instances.ttl | Current A-Box individuals and relationships in Turtle |",
+        "| exports/report/rdf/ontology.jsonld | JSON-LD graph exchange format |",
+        "| exports/report/rdf/shapes.ttl | SHACL seed shapes for datatype and key constraints |",
+        "| exports/report/rdf/queries.sparql | Seed SPARQL queries from classes and competency questions |",
+        "| exports/report/rdf/rdf_mapping.md | Base IRI, URI rule, class/property mapping, source field mappings |",
+        "",
+        "These are handoff artifacts, not a claim that production RDF/OWL reasoning is complete. "
+        "Domain experts should review URI rules, class/property semantics, named graph strategy, "
+        "and SHACL constraints before production loading.",
+    ]
+    if workflow and (workflow.get("competency_questions") or []):
+        lines += ["", "### Competency Questions Reflected in SPARQL Seeds", ""]
+        for q in (workflow.get("competency_questions") or [])[:8]:
+            text = q.get("question") or q.get("text")
+            if text:
+                lines.append(f"- {text}")
+    if workflow and (workflow.get("rdf_decisions") or []):
+        lines += ["", "### RDF Decisions Captured During Workflow", ""]
+        for item in (workflow.get("rdf_decisions") or [])[:8]:
+            topic = item.get("topic") or "decision"
+            value = item.get("value") or item.get("text") or "-"
+            lines.append(f"- {topic}: {value}")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # 통합 렌더
 # ---------------------------------------------------------------------------
@@ -474,7 +602,8 @@ def render_report_md(g: OntologyGraph, title: str = "온톨로지 워크샵 결�
                      descriptions: dict | None = None,
                      schema_map: dict | None = None,
                      gate_data: dict | None = None,
-                     lang: str | None = None) -> str:
+                     lang: str | None = None,
+                     workflow: dict | None = None) -> str:
     S = i18n.strings(lang)
     parts = [
         f"# {title}",
@@ -489,6 +618,10 @@ def render_report_md(g: OntologyGraph, title: str = "온톨로지 워크샵 결�
         migration_plan_section(g, lang),
         data_readiness_section(g, gate_data, lang),
     ]
+    workflow_section = ai_odlc_section(workflow, lang)
+    if workflow_section:
+        parts.append(workflow_section)
+    parts.append(rdf_handoff_section(workflow, lang))
     if include_handover:
         parts.append(handover_section(g, open_issues, schema_map, lang))
     return "\n\n".join(parts)
@@ -501,9 +634,11 @@ def render_report_html(g: OntologyGraph, title: str = "온톨로지 워크샵 �
                        descriptions: dict | None = None,
                        schema_map: dict | None = None,
                        gate_data: dict | None = None,
-                       lang: str | None = None) -> str:
+                       lang: str | None = None,
+                       workflow: dict | None = None) -> str:
     md = render_report_md(g, title, verified_queries, include_handover,
-                          open_issues, descriptions, schema_map, gate_data, lang)
+                          open_issues, descriptions, schema_map, gate_data, lang,
+                          workflow)
     body = _md_to_html(md)
     return (_HTML_TMPL
             .replace("{{LANG}}", i18n.strings(lang)["html_lang"])

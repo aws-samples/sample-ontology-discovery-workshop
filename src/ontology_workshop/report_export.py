@@ -19,13 +19,15 @@ def export_all(g: OntologyGraph, outdir: str = "./exports/report",
                descriptions: dict | None = None,
                schema_map: dict | None = None,
                gate_data: dict | None = None,
-               lang: str | None = None) -> dict:
+               lang: str | None = None,
+               workflow: dict | None = None,
+               rdf_base_iri: str | None = None) -> dict:
     outdir = safe_export_dir(outdir)
     os.makedirs(outdir, exist_ok=True)
     md = rp.render_report_md(g, title, verified_queries, True, open_issues,
-                             descriptions, schema_map, gate_data, lang)
+                             descriptions, schema_map, gate_data, lang, workflow)
     html = rp.render_report_html(g, title, verified_queries, True, open_issues,
-                                 descriptions, schema_map, gate_data, lang)
+                                 descriptions, schema_map, gate_data, lang, workflow)
 
     md_path = os.path.join(outdir, "workshop_report.md")
     html_path = os.path.join(outdir, "workshop_report.html")
@@ -51,7 +53,7 @@ def export_all(g: OntologyGraph, outdir: str = "./exports/report",
     docx_path = os.path.join(outdir, "workshop_report.docx")
     try:
         _export_docx(g, docx_path, title, verified_queries, open_issues,
-                     descriptions, schema_map, gate_data, lang)
+                     descriptions, schema_map, gate_data, lang, workflow)
         os.chmod(docx_path, 0o600)
         result["docx"] = docx_path
     except Exception as e:  # noqa: BLE001
@@ -67,6 +69,14 @@ def export_all(g: OntologyGraph, outdir: str = "./exports/report",
     except Exception as e:  # noqa: BLE001
         result["neptune_error"] = str(e)
 
+    try:
+        from . import rdf_export as rdfx  # noqa: PLC0415
+        result["rdf"] = rdfx.export_all(
+            g, os.path.join(outdir, "rdf"), workflow,
+            rdf_base_iri or rdfx.DEFAULT_BASE_IRI)
+    except Exception as e:  # noqa: BLE001
+        result["rdf_error"] = str(e)
+
     audit_log("report_files_exported", outdir=outdir, title=title, lang=lang)
     return result
 
@@ -77,13 +87,14 @@ def _export_docx(g: OntologyGraph, path: str, title: str,
                  descriptions: dict | None = None,
                  schema_map: dict | None = None,
                  gate_data: dict | None = None,
-                 lang: str | None = None) -> None:
+                 lang: str | None = None,
+                 workflow: dict | None = None) -> None:
     path = safe_export_path(path)
     from docx import Document  # noqa: PLC0415
     from docx.shared import Pt  # noqa: PLC0415
 
     md = rp.render_report_md(g, title, verified_queries, True, open_issues,
-                             descriptions, schema_map, gate_data, lang)
+                             descriptions, schema_map, gate_data, lang, workflow)
     doc = Document()
     # 기본 폰트(한글 대응)
     style = doc.styles["Normal"]

@@ -22,7 +22,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from .graph import OntologyGraph, EntityType, RelationType
 from .docgen import render_markdown, render_query_evidence
@@ -30,6 +30,8 @@ from . import neptune_export as nx
 from . import skills as sk
 from . import report_export as rx
 from . import snapshot_export as sx
+from . import rdf_export as rdfx
+from .workflow import WorkflowState, STAGES, STAGE_LABELS
 from .security import audit_log, safe_export_path
 
 DB_PATH = os.environ.get("ONTOFORGE_DB", "./workshop.kuzu")
@@ -44,6 +46,7 @@ g: OntologyGraph
 clients: set[WebSocket] = set()
 verified_queries: list[dict] = []
 narrations: list[dict] = []   # Claude Code가 푸시하는 사람용 진행 로그(서머리·Q&A·대화)
+workflow = WorkflowState()
 
 
 @asynccontextmanager
@@ -76,13 +79,34 @@ def _json(content: dict, status_code: int = 200) -> JSONResponse:
     return JSONResponse(jsonable_encoder(content), status_code=status_code)
 
 
+def _workflow_context() -> dict:
+    tb = g.tbox()
+    snap = g.snapshot()
+    return {
+        "graph": {
+            "entities": len(tb.get("entities", {})),
+            "relations": len(tb.get("relations", {})),
+            "nodes": len(snap.get("nodes", [])),
+            "edges": len(snap.get("edges", [])),
+        },
+        "entity_names": list(tb.get("entities", {}).keys()),
+        "relation_names": list(tb.get("relations", {}).keys()),
+        "verified_count": len(verified_queries),
+    }
+
+
+def _workflow_payload() -> dict:
+    return workflow.to_dict(_workflow_context())
+
+
 def _graph_payload() -> dict:
-    return {"type": "graph", "tbox": g.tbox(), "snapshot": g.snapshot()}
+    return {"type": "graph", "tbox": g.tbox(), "snapshot": g.snapshot(),
+            "workflow": _workflow_payload()}
 
 
 def _init_payload() -> dict:
     return {"type": "init", "tbox": g.tbox(), "snapshot": g.snapshot(),
-            "narrations": narrations}
+            "narrations": narrations, "workflow": _workflow_payload()}
 
 
 def _graph_is_empty() -> bool:
@@ -135,6 +159,7 @@ def _restore_snapshot_payload(payload: dict, restore_graph: bool = True) -> dict
     verified_queries.clear()
     narrations.extend(payload.get("narrations") or [])
     verified_queries.extend(payload.get("verified_queries") or [])
+    workflow.load(payload.get("workflow") or {})
     snap = g.snapshot()
     return {"entities": len(g.tbox().get("entities", {})),
             "relations": len(g.tbox().get("relations", {})),
@@ -158,7 +183,8 @@ def _autosave_session() -> None:
     try:
         path = sx.export_snapshot_json(
             g, SESSION_PATH, narrations, verified_queries,
-            last_report.get("title") or "OntoForge autosave")
+            last_report.get("title") or "OntoForge autosave",
+            _workflow_payload())
         audit_log("session_autosaved", path=path)
     except Exception as e:  # noqa: BLE001
         audit_log("session_autosave_failed", error=str(e))
@@ -179,6 +205,28 @@ async def _send_all(payload: dict):
 async def broadcast():
     """그래프 변경분만 브로드캐스트(증분)."""
     await _send_all(_graph_payload())
+
+
+async def broadcast_workflow():
+    await _send_all({"type": "workflow", "workflow": _workflow_payload()})
+
+
+def _narration_item(kind: str, title: str, text: str,
+                    role: str = "agent", meta: dict | None = None) -> dict:
+    return {
+        "kind": kind, "title": title, "text": text,
+        "role": role, "meta": meta or {},
+        "ts": _dt.datetime.now().strftime("%H:%M:%S"),
+    }
+
+
+async def _append_narration(kind: str, title: str, text: str,
+                            role: str = "agent", meta: dict | None = None) -> dict:
+    item = _narration_item(kind, title, text, role, meta)
+    narrations.append(item)
+    await _send_all({"type": "narration", "item": item})
+    audit_log("narration_added", kind=kind, role=role)
+    return item
 
 
 def _configure_audit_logging() -> None:
@@ -326,6 +374,246 @@ async def focus(f: FocusIn):
     return {"ok": True, "n": len(f.ids)}
 
 
+# ---- AI-ODLC workflow state -------------------------------------------
+class WorkflowStartIn(BaseModel):
+    language: str | None = None
+    scope: str | None = None
+    reset: bool = False
+
+
+class WorkflowAnswerIn(BaseModel):
+    text: str
+    stage: str | None = None
+    role: str = "customer"
+    status: str = "candidate"
+    source: str = "workflow_answer"
+    extracted: dict | None = None
+
+
+class WorkflowAdvanceIn(BaseModel):
+    stage: str | None = None
+    force: bool = False
+
+
+class WorkflowReviewIn(BaseModel):
+    findings: list[dict] = []
+    assumptions: list[dict] = []
+    risks: list[dict] = []
+    action_items: list[dict] = []
+
+
+class WorkflowItemIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: str | None = None
+    text: str | None = None
+    status: str | None = None
+    source: str | None = None
+    stage: str | None = None
+
+
+def _workflow_item(body: WorkflowItemIn) -> dict:
+    return body.model_dump(exclude_none=True)
+
+
+def _review_summary(added: dict[str, list[dict]]) -> str:
+    parts = []
+    labels = {
+        "review_findings": "findings",
+        "assumptions": "assumptions",
+        "risks": "risks",
+        "action_items": "actions",
+    }
+    for key, label in labels.items():
+        count = len(added.get(key) or [])
+        if count:
+            parts.append(f"{count} {label}")
+    return "Adversarial review recorded: " + (", ".join(parts) if parts else "no new findings")
+
+
+async def _save_and_broadcast_workflow(event: str, **fields):
+    _autosave_session()
+    await broadcast_workflow()
+    audit_log(event, **fields)
+
+
+@app.get("/workflow/state")
+async def workflow_state():
+    return {"ok": True, "workflow": _workflow_payload(), "stages": STAGES}
+
+
+@app.post("/workflow/start")
+async def workflow_start(body: WorkflowStartIn):
+    state = workflow.start(body.language, body.scope, body.reset)
+    await _save_and_broadcast_workflow(
+        "workflow_started", language=body.language, reset=body.reset)
+    return {"ok": True, "workflow": state, "stages": STAGES}
+
+
+@app.post("/workflow/answer")
+async def workflow_answer(body: WorkflowAnswerIn):
+    result = workflow.process_answer(
+        body.text, body.stage, body.role, body.status, body.source,
+        body.extracted, _workflow_context())
+    item = result["claim"]
+    await _append_narration(
+        "chat", STAGE_LABELS.get(item.get("stage"), item.get("stage", "AI-ODLC")),
+        body.text, body.role,
+        {"workflow_claim_id": item.get("id"), "stage": item.get("stage")})
+    summary = result.get("summary", {})
+    await _append_narration(
+        "reflect", "AI-ODLC extraction",
+        summary.get("summary") or "claim captured",
+        "agent", {"workflow": summary})
+    await _save_and_broadcast_workflow(
+        "workflow_answer_recorded", stage=item.get("stage"), status=item.get("status"))
+    return {"ok": True, **result, "workflow": _workflow_payload()}
+
+
+@app.post("/workflow/clarify")
+async def workflow_clarify(body: WorkflowAnswerIn):
+    result = workflow.process_answer(
+        body.text, body.stage, body.role, body.status,
+        "workflow_clarification", body.extracted, _workflow_context())
+    item = result["claim"]
+    await _append_narration(
+        "chat", "Clarification", body.text, body.role,
+        {"workflow_claim_id": item.get("id"), "stage": item.get("stage")})
+    await _save_and_broadcast_workflow(
+        "workflow_clarification_recorded",
+        stage=item.get("stage"), status=item.get("status"))
+    return {"ok": True, **result, "workflow": _workflow_payload()}
+
+
+@app.post("/workflow/advance")
+async def workflow_advance(body: WorkflowAdvanceIn):
+    try:
+        result = workflow.advance(body.stage, body.force, _workflow_context())
+    except ValueError as e:
+        return _json({"ok": False, "error": str(e)}, status_code=400)
+    if result.get("ok"):
+        await _save_and_broadcast_workflow(
+            "workflow_advanced", stage=result.get("stage"), force=body.force)
+    return _json(result)
+
+
+@app.post("/workflow/review")
+async def workflow_review(body: WorkflowReviewIn):
+    if body.findings or body.assumptions or body.risks or body.action_items:
+        added = workflow.add_review(
+            body.findings, body.assumptions, body.risks, body.action_items)
+    else:
+        added = workflow.generate_review(_workflow_context())
+    await _append_narration(
+        "reflect", "Adversarial review",
+        _review_summary(added), "agent", {"review": added})
+    await _save_and_broadcast_workflow(
+        "workflow_review_recorded",
+        findings=len(added["review_findings"]),
+        assumptions=len(added["assumptions"]),
+        risks=len(added["risks"]),
+        action_items=len(added["action_items"]))
+    return {"ok": True, "added": added, "workflow": _workflow_payload()}
+
+
+@app.get("/workflow/gates")
+async def workflow_gates():
+    return {"ok": True, "gates": workflow.gates(_workflow_context())}
+
+
+@app.get("/workflow/next-question")
+async def workflow_next_question():
+    question = workflow.next_question(_workflow_context())
+    workflow.data["active_question"] = question
+    workflow.touch()
+    return {"ok": True, "question": question, "workflow": _workflow_payload()}
+
+
+@app.get("/coverage")
+async def workflow_coverage():
+    wf = _workflow_payload()
+    return {
+        "ok": True,
+        "progress": wf.get("progress", {}),
+        "gates": wf.get("gates", {}),
+        "counts": {
+            "claims": len(wf.get("claims") or []),
+            "user_stories": len(wf.get("user_stories") or []),
+            "domain_events": len(wf.get("domain_events") or []),
+            "competency_questions": len(wf.get("competency_questions") or []),
+            "model_candidates": len(wf.get("model_candidates") or []),
+            "data_sources": len(wf.get("data_sources") or []),
+            "field_mappings": len(wf.get("field_mappings") or []),
+            "risks": len(wf.get("risks") or []),
+            "assumptions": len(wf.get("assumptions") or []),
+            "action_items": len(wf.get("action_items") or []),
+            "validation_queries": len(wf.get("validation_queries") or []),
+            "rdf_decisions": len(wf.get("rdf_decisions") or []),
+        },
+    }
+
+
+async def _add_workflow_item(collection: str, prefix: str, body: WorkflowItemIn):
+    try:
+        item = workflow.add_item(collection, prefix, _workflow_item(body))
+        if collection in {
+            "competency_questions", "model_candidates", "data_sources",
+            "field_mappings", "rdf_decisions",
+        }:
+            workflow._refresh_query_candidates(_workflow_context())
+            workflow.data["active_question"] = workflow.next_question(_workflow_context())
+    except ValueError as e:
+        return _json({"ok": False, "error": str(e)}, status_code=400)
+    await _save_and_broadcast_workflow(
+        "workflow_item_added", collection=collection, item_id=item.get("id"))
+    return {"ok": True, "item": item, "workflow": _workflow_payload()}
+
+
+@app.post("/claim")
+async def add_claim(body: WorkflowItemIn):
+    return await _add_workflow_item("claims", "claim", body)
+
+
+@app.post("/story")
+async def add_story(body: WorkflowItemIn):
+    return await _add_workflow_item("user_stories", "story", body)
+
+
+@app.post("/event")
+async def add_event(body: WorkflowItemIn):
+    return await _add_workflow_item("domain_events", "event", body)
+
+
+@app.post("/question")
+async def add_question(body: WorkflowItemIn):
+    return await _add_workflow_item("competency_questions", "question", body)
+
+
+@app.post("/model-candidate")
+async def add_model_candidate(body: WorkflowItemIn):
+    return await _add_workflow_item("model_candidates", "model", body)
+
+
+@app.post("/data-source")
+async def add_data_source(body: WorkflowItemIn):
+    return await _add_workflow_item("data_sources", "source", body)
+
+
+@app.post("/mapping")
+async def add_mapping(body: WorkflowItemIn):
+    return await _add_workflow_item("field_mappings", "mapping", body)
+
+
+@app.post("/validation-query")
+async def add_validation_query(body: WorkflowItemIn):
+    return await _add_workflow_item("validation_queries", "query", body)
+
+
+@app.post("/rdf-decision")
+async def add_rdf_decision(body: WorkflowItemIn):
+    return await _add_workflow_item("rdf_decisions", "rdf", body)
+
+
 @app.post("/skill")
 async def run_skill(s: SkillIn):
     """대화 텍스트 → 스킬 실행 → (옵션)그래프 반영 → 브로드캐스트."""
@@ -425,7 +713,8 @@ async def export_neptune():
 
 @app.get("/snapshot")
 async def snapshot():
-    return {"tbox": g.tbox(), "snapshot": g.snapshot()}
+    return {"tbox": g.tbox(), "snapshot": g.snapshot(),
+            "workflow": _workflow_payload()}
 
 
 # ---- M2: 변경 모드 / 백지 시작 -------------------------------------
@@ -451,6 +740,7 @@ async def reset():
     r = g.reset()
     verified_queries.clear()
     narrations.clear()
+    workflow.reset()
     await _send_all(_init_payload())   # 클라이언트 피드까지 비우도록 init 재전송
     _autosave_session()
     audit_log("server_reset")
@@ -499,12 +789,15 @@ class ReportIn(BaseModel):
     action_items: dict | None = None  # {"customer":[...],"us":[...]}
     # 보고서/스냅샷 UI 언어(ko|en|ja). 엔터티·데이터 라벨은 고객 도메인이라 번역하지 않음.
     lang: str | None = None
+    # RDF/JSON-LD/SHACL export base IRI.
+    rdf_base_iri: str | None = None
 
 
 # 마지막으로 사용한 비개발자 설명/제목을 기억 → ZIP 재생성 시 풍부한 보고서 유지
 last_report: dict = {"title": "온톨로지 워크샵 결과",
                      "descriptions": None, "open_issues": None,
-                     "schema_map": None, "gate_data": None, "lang": None}
+                     "schema_map": None, "gate_data": None, "lang": None,
+                     "rdf_base_iri": None}
 
 
 def _gate_data(body: "ReportIn") -> dict | None:
@@ -531,23 +824,45 @@ async def export_report(body: ReportIn | None = None):
     gate_data = (_gate_data(body) if {"data_status", "action_items"} & sent
                  else last_report.get("gate_data"))
     lang = body.lang if "lang" in sent else last_report.get("lang")
+    rdf_base_iri = (body.rdf_base_iri if "rdf_base_iri" in sent
+                    else last_report.get("rdf_base_iri"))
 
     last_report.update(title=title, descriptions=descriptions,
                        open_issues=open_issues, schema_map=schema_map,
-                       gate_data=gate_data, lang=lang)
+                       gate_data=gate_data, lang=lang,
+                       rdf_base_iri=rdf_base_iri)
     _autosave_session()
     res = rx.export_all(g, REPORT_DIR, title, verified_queries,
                         open_issues, descriptions, schema_map,
-                        gate_data, lang)
+                        gate_data, lang, _workflow_payload(), rdf_base_iri)
     # 단독 실행 스냅샷 뷰어 + 복원용 JSON 함께 생성
     res["snapshot_viewer"] = sx.export_static_viewer(
         g, os.path.join(REPORT_DIR, "workshop_snapshot.html"),
-        narrations, verified_queries, title)
+        narrations, verified_queries, title, _workflow_payload())
     res["snapshot_json"] = sx.export_snapshot_json(
         g, os.path.join(REPORT_DIR, "workshop_snapshot.json"),
-        narrations, verified_queries, title)
+        narrations, verified_queries, title, _workflow_payload())
     audit_log("report_exported", title=title, lang=lang)
     return res
+
+
+class RdfExportIn(BaseModel):
+    outdir: str = "./exports/rdf"
+    base_iri: str | None = None
+
+
+@app.post("/export/rdf")
+async def export_rdf(body: RdfExportIn | None = None):
+    body = body or RdfExportIn()
+    try:
+        res = rdfx.export_all(
+            g, body.outdir, _workflow_payload(),
+            body.base_iri or last_report.get("rdf_base_iri")
+            or rdfx.DEFAULT_BASE_IRI)
+    except ValueError as e:
+        return _json({"ok": False, "error": str(e)}, status_code=400)
+    audit_log("rdf_exported", outdir=body.outdir, base_iri=body.base_iri)
+    return {"ok": True, "rdf": res}
 
 
 class ImportIn(BaseModel):
@@ -557,6 +872,7 @@ class ImportIn(BaseModel):
     snapshot: dict = {}
     narrations: list = []
     verified_queries: list = []
+    workflow: dict = {}
 
 
 @app.post("/import")
@@ -573,7 +889,8 @@ async def import_snapshot(s: ImportIn):
 async def export_snapshot():
     """대화·인스턴스·스키마·상태를 그대로 담은 단독 실행 HTML(브라우저에서 바로 열림)."""
     return sx.build_static_viewer(g, narrations, verified_queries,
-                                  last_report.get("title") or "온톨로지 워크샵 스냅샷")
+                                  last_report.get("title") or "온톨로지 워크샵 스냅샷",
+                                  _workflow_payload())
 
 
 @app.get("/download/workshop.zip")
@@ -583,15 +900,16 @@ async def download_zip():
     rx.export_all(g, REPORT_DIR, last_report.get("title") or "온톨로지 워크샵 결과",
                   verified_queries, last_report.get("open_issues"),
                   last_report.get("descriptions"), last_report.get("schema_map"),
-                  last_report.get("gate_data"), last_report.get("lang"))
+                  last_report.get("gate_data"), last_report.get("lang"),
+                  _workflow_payload(), last_report.get("rdf_base_iri"))
     title = last_report.get("title") or "온톨로지 워크샵 스냅샷"
     sx.export_static_viewer(
         g, os.path.join(REPORT_DIR, "workshop_snapshot.html"),
-        narrations, verified_queries, title)
+        narrations, verified_queries, title, _workflow_payload())
     # 스킬 재발동 복원용 JSON도 묶음에 포함
     sx.export_snapshot_json(
         g, os.path.join(REPORT_DIR, "workshop_snapshot.json"),
-        narrations, verified_queries, title)
+        narrations, verified_queries, title, _workflow_payload())
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:

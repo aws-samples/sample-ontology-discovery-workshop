@@ -38,7 +38,8 @@ def _cytoscape_inline_tag() -> str:
 def snapshot_payload(g: OntologyGraph,
                      narrations: list[dict] | None = None,
                      verified_queries: list[dict] | None = None,
-                     title: str = "온톨로지 워크샵 스냅샷") -> dict:
+                     title: str = "온톨로지 워크샵 스냅샷",
+                     workflow: dict | None = None) -> dict:
     """스냅샷 1건의 전체 데이터(복원·뷰어 공용)."""
     return {
         "title": title,
@@ -47,17 +48,19 @@ def snapshot_payload(g: OntologyGraph,
         "snapshot": g.snapshot(),
         "narrations": narrations or [],
         "verified_queries": verified_queries or [],
+        "workflow": workflow or {},
     }
 
 
 def export_snapshot_json(g: OntologyGraph, path: str,
                          narrations: list[dict] | None = None,
                          verified_queries: list[dict] | None = None,
-                         title: str = "온톨로지 워크샵 스냅샷") -> str:
+                         title: str = "온톨로지 워크샵 스냅샷",
+                         workflow: dict | None = None) -> str:
     """스킬 재발동 시 `POST /import`로 바로 복원할 수 있는 JSON 산출물."""
     path = safe_export_path(path)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    payload = snapshot_payload(g, narrations, verified_queries, title)
+    payload = snapshot_payload(g, narrations, verified_queries, title, workflow)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, default=str, indent=2)
     os.chmod(path, 0o600)
@@ -68,11 +71,12 @@ def export_snapshot_json(g: OntologyGraph, path: str,
 def build_static_viewer(g: OntologyGraph,
                         narrations: list[dict] | None = None,
                         verified_queries: list[dict] | None = None,
-                        title: str = "온톨로지 워크샵 스냅샷") -> str:
+                        title: str = "온톨로지 워크샵 스냅샷",
+                        workflow: dict | None = None) -> str:
     with open(_INDEX, encoding="utf-8") as f:
         html = f.read()
 
-    payload = snapshot_payload(g, narrations, verified_queries, title)
+    payload = snapshot_payload(g, narrations, verified_queries, title, workflow)
     data_json = json.dumps(payload, ensure_ascii=False, default=str)
 
     # 1) cytoscape 인라인(오프라인)
@@ -89,6 +93,7 @@ def build_static_viewer(g: OntologyGraph,
         '  var conn=document.getElementById("conn");\n'
         '  if(conn) conn.textContent=t("connSnap")+" · "+(S.generated||"");\n'
         '  lastData={tbox:S.tbox,snapshot:S.snapshot};\n'
+        '  lastWorkflow=S.workflow||{};\n'
         '  clearFeed();(S.narrations||[]).forEach(addFeed);\n'
         '  if(!(S.narrations||[]).length){\n'
         '    var feed=document.getElementById("feed");\n'
@@ -98,7 +103,8 @@ def build_static_viewer(g: OntologyGraph,
         '  // 서버 의존 동작은 스냅샷에서 비활성(오프라인)\n'
         '  var off=function(){alert(t("snapshotUnavailable"));};\n'
         '  window.resetGraph=window.exportReport=window.exportNeptune='
-        'window.openSnapshot=window.downloadZip=off;\n'
+        'window.openSnapshot=window.downloadZip=window.submitWorkflowAnswer='
+        'window.advanceWorkflow=window.reviewWorkflow=window.refreshNextQuestion=off;\n'
         '})();'
     )
     html = html.replace(_BOOTSTRAP_LINE, boot)
@@ -132,10 +138,11 @@ def build_static_viewer(g: OntologyGraph,
 def export_static_viewer(g: OntologyGraph, path: str,
                          narrations: list[dict] | None = None,
                          verified_queries: list[dict] | None = None,
-                         title: str = "온톨로지 워크샵 스냅샷") -> str:
+                         title: str = "온톨로지 워크샵 스냅샷",
+                         workflow: dict | None = None) -> str:
     path = safe_export_path(path)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    html = build_static_viewer(g, narrations, verified_queries, title)
+    html = build_static_viewer(g, narrations, verified_queries, title, workflow)
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
     os.chmod(path, 0o600)

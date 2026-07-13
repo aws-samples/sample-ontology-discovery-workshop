@@ -107,9 +107,28 @@
   .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;
     border:1px solid var(--line);margin:0 4px 5px 0;color:var(--ink);background:#0f1620}
   .pill.r{border-color:#274a6e;color:var(--accent2)}
+  .pill.pass{border-color:#1d5e4c;color:var(--accent)}
+  .pill.partial{border-color:#5e4a1d;color:var(--warn)}
+  .pill.fail{border-color:#5a2730;color:#ff8aa0}
   .dotc{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
   .inspector{font-size:12px;color:var(--muted);line-height:1.6}
   .inspector b{color:var(--ink)}
+  .odlc-stage{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:5px}
+  .odlc-question{font-size:11px;color:var(--muted);line-height:1.5;margin:7px 0 9px}
+  .odlc-bar{height:6px;border-radius:99px;background:#0a0f16;border:1px solid var(--line);overflow:hidden;margin:6px 0}
+  .odlc-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));width:0}
+  .odlc-console{margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
+  .odlc-console label{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:7px 0 4px}
+  .odlc-console textarea,.odlc-console select{width:100%;background:#0a0f16;border:1px solid var(--line);
+    color:var(--ink);border-radius:7px;font-family:var(--mono);font-size:11px;padding:8px;outline:none}
+  .odlc-console textarea{min-height:82px;resize:vertical;line-height:1.45}
+  .odlc-console textarea:focus,.odlc-console select:focus{border-color:var(--accent2)}
+  .odlc-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+  .odlc-actions button{background:#0f1620;border:1px solid var(--line);color:var(--muted);
+    font-size:10px;padding:7px 8px;border-radius:7px;cursor:pointer;font-family:var(--mono)}
+  .odlc-actions button:hover{border-color:var(--accent2);color:var(--ink)}
+  .odlc-actions button.primary{grid-column:1 / -1;border-color:#1d5e4c;color:var(--accent);background:#0f1f1a}
+  .odlc-status{font-size:10px;color:var(--muted);line-height:1.4;margin-top:7px;min-height:14px}
 </style>
 </head>
 <body>
@@ -173,6 +192,35 @@
       <div class="stat"><span data-i18n="sNode">인스턴스 노드 (A-Box)</span><b id="nNode">0</b></div>
       <div class="stat"><span data-i18n="sEdge">인스턴스 엣지 (A-Box)</span><b id="nEdge">0</b></div>
     </div>
+    <div class="sec">
+      <h3 data-i18n="hWorkflow">AI-ODLC</h3>
+      <div id="workflowBox">
+        <div class="odlc-stage" id="wfStage">Inception</div>
+        <div class="stat"><span data-i18n="wfProgress">진행률</span><b id="wfProgress">0%</b></div>
+        <div class="odlc-bar"><div class="odlc-fill" id="wfFill"></div></div>
+        <div class="odlc-question" id="wfQuestion">-</div>
+        <div id="wfGates"></div>
+        <div class="stat"><span data-i18n="wfClaims">Claims</span><b id="wfClaims">0</b></div>
+        <div class="stat"><span data-i18n="wfQuestions">Questions</span><b id="wfQuestions">0</b></div>
+        <div class="stat"><span data-i18n="wfMappings">Mappings</span><b id="wfMappings">0</b></div>
+        <div class="stat"><span data-i18n="wfActions">Actions</span><b id="wfActions">0</b></div>
+        <div class="stat"><span data-i18n="wfQueries">Query seeds</span><b id="wfQueries">0</b></div>
+        <div class="odlc-console">
+          <label for="wfStageSelect" data-i18n="wfStageInput">stage</label>
+          <select id="wfStageSelect"></select>
+          <label for="wfAnswer" data-i18n="wfAnswerInput">answer / data structure</label>
+          <textarea id="wfAnswer" data-i18n-placeholder="wfAnswerPh" placeholder="사용자 스토리, 도메인 이벤트, 질문, 테이블 스키마, RDF 결정 등을 입력하세요. JSON도 가능합니다."></textarea>
+          <div class="odlc-actions">
+            <button class="primary" onclick="submitWorkflowAnswer()" data-i18n="wfSubmit">AI-ODLC 답변 반영</button>
+            <button onclick="advanceWorkflow(false)" data-i18n="wfAdvance">Gate 통과</button>
+            <button onclick="advanceWorkflow(true)" data-i18n="wfForce">강제 진행</button>
+            <button onclick="reviewWorkflow()" data-i18n="wfReview">적대적 리뷰</button>
+            <button onclick="refreshNextQuestion()" data-i18n="wfNextQ">다음 질문</button>
+          </div>
+          <div class="odlc-status" id="wfStatus"></div>
+        </div>
+      </div>
+    </div>
     <div class="sec"><h3 data-i18n="hEnt">엔티티 타입</h3><div id="ents"></div></div>
     <div class="sec"><h3 data-i18n="hRel">관계 타입</h3><div id="rels"></div></div>
     <div class="sec" style="flex:1"><h3 data-i18n="hInsp">노드 인스펙터</h3>
@@ -181,7 +229,7 @@
 </div>
 
 <script>
-let cy, view="abox", lastData={tbox:{entities:{},relations:{}},snapshot:{nodes:[],edges:[]}};
+let cy, view="abox", lastData={tbox:{entities:{},relations:{}},snapshot:{nodes:[],edges:[]}}, lastWorkflow={};
 
 // ---- i18n (KO / EN / JA) — UI 문자열만. 엔티티/데이터 라벨은 고객 데이터라 번역 안 함 ----
 const I18N={
@@ -197,6 +245,10 @@ const I18N={
     feedEmpty:"아직 대화가 없습니다.<br>Claude Code에서 워크샵을 시작하세요.",
     tabAbox:"인스턴스 (A-Box)", tabTbox:"스키마 (T-Box)", btnShowAll:"✕ 전체 보기",
     hCurrent:"현재 상태", sEnt:"엔티티 타입 (T-Box)", sRel:"관계 타입 (T-Box)", sNode:"인스턴스 노드 (A-Box)", sEdge:"인스턴스 엣지 (A-Box)",
+    hWorkflow:"AI-ODLC", wfProgress:"진행률", wfClaims:"Claims", wfQuestions:"Questions", wfMappings:"Mappings", wfActions:"Actions", wfQueries:"Query seeds",
+    wfStageInput:"stage", wfAnswerInput:"answer / data structure", wfAnswerPh:"사용자 스토리, 도메인 이벤트, 질문, 테이블 스키마, RDF 결정 등을 입력하세요. JSON도 가능합니다.",
+    wfSubmit:"AI-ODLC 답변 반영", wfAdvance:"Gate 통과", wfForce:"강제 진행", wfReview:"적대적 리뷰", wfNextQ:"다음 질문",
+    wfNeedAnswer:"답변을 입력하세요.", wfSubmitting:"반영 중…", wfDone:"반영 완료", wfAdvancing:"진행 중…", wfReviewing:"리뷰 생성 중…", wfNexting:"다음 질문 갱신 중…",
     hEnt:"엔티티 타입", hRel:"관계 타입", hInsp:"노드 인스펙터", inspEmpty:"노드를 클릭하면 속성이 표시됩니다.",
     none:"아직 없음", noProps:"(속성 없음)", relation:"관계", type:"타입", rows:"건", focusBtn:"🔍 그래프에서 이 결과만 보기",
     snapshotTitle:"워크샵 스냅샷", readOnlySnapshot:"읽기 전용 스냅샷",
@@ -219,6 +271,10 @@ const I18N={
     feedEmpty:"No conversation yet.<br>Start the workshop in Claude Code.",
     tabAbox:"Instances (A-Box)", tabTbox:"Schema (T-Box)", btnShowAll:"✕ Show all",
     hCurrent:"Current State", sEnt:"Entity types (T-Box)", sRel:"Relation types (T-Box)", sNode:"Instance nodes (A-Box)", sEdge:"Instance edges (A-Box)",
+    hWorkflow:"AI-ODLC", wfProgress:"Progress", wfClaims:"Claims", wfQuestions:"Questions", wfMappings:"Mappings", wfActions:"Actions", wfQueries:"Query seeds",
+    wfStageInput:"stage", wfAnswerInput:"answer / data structure", wfAnswerPh:"Enter a user story, domain event, question, table schema, RDF decision, or JSON payload.",
+    wfSubmit:"Apply AI-ODLC answer", wfAdvance:"Pass gate", wfForce:"Force advance", wfReview:"Adversarial review", wfNextQ:"Next question",
+    wfNeedAnswer:"Enter an answer first.", wfSubmitting:"Applying…", wfDone:"Applied", wfAdvancing:"Advancing…", wfReviewing:"Generating review…", wfNexting:"Refreshing next question…",
     hEnt:"Entity types", hRel:"Relation types", hInsp:"Node Inspector", inspEmpty:"Click a node to see its properties.",
     none:"None yet", noProps:"(no properties)", relation:"relation", type:"type", rows:"rows", focusBtn:"🔍 Show only this result",
     snapshotTitle:"Workshop Snapshot", readOnlySnapshot:"Read-only snapshot",
@@ -241,6 +297,10 @@ const I18N={
     feedEmpty:"まだ会話がありません。<br>Claude Codeでワークショップを開始してください。",
     tabAbox:"インスタンス (A-Box)", tabTbox:"スキーマ (T-Box)", btnShowAll:"✕ 全体表示",
     hCurrent:"現在の状態", sEnt:"エンティティ型 (T-Box)", sRel:"リレーション型 (T-Box)", sNode:"インスタンスノード (A-Box)", sEdge:"インスタンスエッジ (A-Box)",
+    hWorkflow:"AI-ODLC", wfProgress:"進捗", wfClaims:"Claims", wfQuestions:"Questions", wfMappings:"Mappings", wfActions:"Actions", wfQueries:"Query seeds",
+    wfStageInput:"stage", wfAnswerInput:"answer / data structure", wfAnswerPh:"ユーザーストーリー、ドメインイベント、質問、テーブルスキーマ、RDF決定、JSONを入力してください。",
+    wfSubmit:"AI-ODLC回答を反映", wfAdvance:"Gate通過", wfForce:"強制進行", wfReview:"敵対的レビュー", wfNextQ:"次の質問",
+    wfNeedAnswer:"回答を入力してください。", wfSubmitting:"反映中…", wfDone:"反映完了", wfAdvancing:"進行中…", wfReviewing:"レビュー生成中…", wfNexting:"次の質問を更新中…",
     hEnt:"エンティティ型", hRel:"リレーション型", hInsp:"ノードインスペクター", inspEmpty:"ノードをクリックすると属性が表示されます。",
     none:"まだありません", noProps:"(属性なし)", relation:"リレーション", type:"タイプ", rows:"件", focusBtn:"🔍 この結果だけグラフ表示",
     snapshotTitle:"ワークショップスナップショット", readOnlySnapshot:"読み取り専用スナップショット",
@@ -259,6 +319,7 @@ function applyI18n(){
   document.documentElement.lang=LANG;
   document.querySelectorAll("[data-i18n]").forEach(el=>{ el.innerHTML=t(el.getAttribute("data-i18n")); });
   document.querySelectorAll("[data-i18n-title]").forEach(el=>{ el.title=t(el.getAttribute("data-i18n-title")); });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach(el=>{ el.placeholder=t(el.getAttribute("data-i18n-placeholder")); });
   ["ko","en","ja"].forEach(l=>{ const b=document.getElementById("lg"+l); if(b) b.classList.toggle("on",l===LANG); });
   const cur=document.getElementById("langCur"); if(cur) cur.textContent=LANG.toUpperCase();
 }
@@ -268,7 +329,7 @@ function setLang(l){
   if(!I18N[l]) return;
   LANG=l; localStorage.setItem("of_lang",l);
   const dd=document.getElementById("langDd"); if(dd) dd.classList.remove("open");
-  applyI18n(); setConn(); renderFeed(); updateSummary();
+  applyI18n(); setConn(); renderFeed(); updateSummary(); updateWorkflow();
   const insp=document.getElementById("insp"); if(insp&&!lastSelection) insp.innerHTML=t("inspEmpty");
 }
 function loadLang(){ applyI18n(); }
@@ -420,6 +481,7 @@ function render(){
   cy.add(els);
   cy.layout({name:'cose',animate:true,animationDuration:400}).run();
   updateSummary();
+  updateWorkflow();
   // 그래프가 갱신돼도 진행 중이던 초점은 유지
   if(focusState && view==='abox') applyFocus(focusState.ids, focusState.label);
 }
@@ -439,6 +501,113 @@ function updateSummary(){
   document.getElementById('rels').innerHTML=
     Object.values(rels).map(r=>`<span class="pill r">${esc(r.name)}</span>`).join('')
     ||`<span style="color:var(--muted);font-size:11px">${t('none')}</span>`;
+}
+
+function updateWorkflow(){
+  const wf=lastWorkflow||{};
+  ensureWorkflowStages(wf);
+  const progress=wf.progress||{};
+  const percent=Number(progress.percent||0);
+  const stage=document.getElementById('wfStage');
+  if(stage) stage.textContent=wf.stage_label||wf.current_stage||'Inception';
+  const p=document.getElementById('wfProgress');
+  if(p) p.textContent=`${percent}%`;
+  const fill=document.getElementById('wfFill');
+  if(fill) fill.style.width=Math.max(0,Math.min(100,percent))+'%';
+  const q=document.getElementById('wfQuestion');
+  if(q) q.textContent=wf.active_question||'-';
+  const gates=document.getElementById('wfGates');
+  if(gates){
+    const entries=Object.entries(wf.gates||{});
+    gates.innerHTML=entries.slice(0,8).map(([name,g])=>{
+      const status=(g&&g.status)||'fail';
+      return `<span class="pill ${esc(status)}">${esc(name)}: ${esc(status)}</span>`;
+    }).join('') || `<span style="color:var(--muted);font-size:11px">${t('none')}</span>`;
+  }
+  const set=(id,val)=>{const el=document.getElementById(id); if(el) el.textContent=val;};
+  set('wfClaims',(wf.claims||[]).length);
+  set('wfQuestions',(wf.competency_questions||[]).length);
+  set('wfMappings',(wf.field_mappings||[]).length);
+  set('wfActions',(wf.action_items||[]).length);
+  set('wfQueries',(wf.validation_queries||[]).length);
+  const sel=document.getElementById('wfStageSelect');
+  if(sel && wf.current_stage) sel.value=wf.current_stage;
+  const status=document.getElementById('wfStatus');
+  if(status && wf.last_extraction && wf.last_extraction.summary){
+    status.textContent=wf.last_extraction.summary;
+  }
+}
+
+function ensureWorkflowStages(wf){
+  const sel=document.getElementById('wfStageSelect');
+  if(!sel || sel.dataset.ready) return;
+  const gates=Object.keys((wf&&wf.gates)||{});
+  const stages=gates.length?gates:[
+    'inception','discovery','event_discovery','story_to_question',
+    'model_synthesis','data_grounding','adversarial_review','validation_handoff'
+  ];
+  sel.innerHTML=stages.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');
+  sel.dataset.ready='1';
+}
+
+function setWorkflowStatus(msg){
+  const el=document.getElementById('wfStatus');
+  if(el) el.textContent=msg||'';
+}
+
+async function submitWorkflowAnswer(){
+  const ta=document.getElementById('wfAnswer');
+  const text=(ta&&ta.value||'').trim();
+  if(!text){ setWorkflowStatus(t('wfNeedAnswer')); return; }
+  const sel=document.getElementById('wfStageSelect');
+  const stage=(sel&&sel.value) || (lastWorkflow.current_stage||'inception');
+  setWorkflowStatus(t('wfSubmitting'));
+  const r=await fetch('/workflow/answer',{
+    method:'POST',
+    headers:authHeaders({'Content-Type':'application/json'}),
+    body:JSON.stringify({text,stage,role:'customer'})
+  });
+  const d=await r.json();
+  if(d.workflow) lastWorkflow=d.workflow;
+  if(ta) ta.value='';
+  updateWorkflow();
+  setWorkflowStatus(d.ok ? (t('wfDone')+': '+((d.summary&&d.summary.summary)||'')) : (d.error||'error'));
+}
+
+async function advanceWorkflow(force){
+  setWorkflowStatus(t('wfAdvancing'));
+  const r=await fetch('/workflow/advance',{
+    method:'POST',
+    headers:authHeaders({'Content-Type':'application/json'}),
+    body:JSON.stringify({force:!!force})
+  });
+  const d=await r.json();
+  if(d.workflow) lastWorkflow=d.workflow;
+  updateWorkflow();
+  const blocked=d.blocked&&d.gate ? 'blocked: '+((d.gate.missing||[]).join(', ')) : '';
+  setWorkflowStatus(d.ok ? t('wfDone') : (blocked || d.error || 'blocked'));
+}
+
+async function reviewWorkflow(){
+  setWorkflowStatus(t('wfReviewing'));
+  const r=await fetch('/workflow/review',{
+    method:'POST',
+    headers:authHeaders({'Content-Type':'application/json'}),
+    body:JSON.stringify({})
+  });
+  const d=await r.json();
+  if(d.workflow) lastWorkflow=d.workflow;
+  updateWorkflow();
+  setWorkflowStatus(d.ok ? t('wfDone') : (d.error||'error'));
+}
+
+async function refreshNextQuestion(){
+  setWorkflowStatus(t('wfNexting'));
+  const r=await fetch('/workflow/next-question',{headers:authHeaders()});
+  const d=await r.json();
+  if(d.workflow) lastWorkflow=d.workflow;
+  updateWorkflow();
+  setWorkflowStatus(d.ok ? (d.question||t('wfDone')) : (d.error||'error'));
 }
 
 // ---- 진행 피드 ----
@@ -536,10 +705,16 @@ function connect(){
     const msg=JSON.parse(ev.data);
     if(msg.type==='init'){
       lastData={tbox:msg.tbox,snapshot:msg.snapshot};
+      lastWorkflow=msg.workflow||{};
       clearFeed();(msg.narrations||[]).forEach(addFeed);
       render();
     }else if(msg.type==='graph'){
-      lastData={tbox:msg.tbox,snapshot:msg.snapshot};render();
+      lastData={tbox:msg.tbox,snapshot:msg.snapshot};
+      lastWorkflow=msg.workflow||lastWorkflow;
+      render();
+    }else if(msg.type==='workflow'){
+      lastWorkflow=msg.workflow||{};
+      updateWorkflow();
     }else if(msg.type==='narration'){
       addFeed(msg.item);
     }else if(msg.type==='focus'){

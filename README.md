@@ -15,8 +15,9 @@ OntoForge is a local workshop tool for building and validating an ontology while
 3. Validates customer questions with **openCypher** so participants can see that the graph can answer real business questions.
 4. Generates ontology documentation in Markdown.
 5. Exports Amazon Neptune-ready artifacts: openCypher scripts and Bulk Loader CSV files.
+6. Exports RDF handoff artifacts: Turtle ontology/instances, JSON-LD, SHACL seed shapes, SPARQL seed queries, and RDF mapping notes.
 
-See [`docs/DESIGN.md`](./docs/DESIGN.md), [`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md), and [`skills/WORKSHOP_SKILLS.md`](./skills/WORKSHOP_SKILLS.md) for design, security, and workshop skill details.
+See [`docs/DESIGN.md`](./docs/DESIGN.md), [`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md), [`docs/AI_ODLC_WORKFLOW.md`](./docs/AI_ODLC_WORKFLOW.md), and [`skills/WORKSHOP_SKILLS.md`](./skills/WORKSHOP_SKILLS.md) for design, security, AI-ODLC workflow, and workshop skill details.
 
 ## Language Behavior
 
@@ -34,6 +35,9 @@ Graph identifiers remain standardized in English regardless of workshop language
 
 - **Fresh start**: use the reset control in the UI or call `POST /reset`.
 - **Change mode**: click entity/relation chips in the sidebar to remove them. Related relation types are removed when an entity type is dropped.
+- **AI-ODLC workflow**: run a one-day AI-guided ontology discovery lifecycle with first-class stories, claims, events, competency questions, data sources, mappings, validation query seeds, RDF decisions, risks, action items, gate checks, and coverage.
+- **Interactive cockpit**: submit workflow answers/data structures, request the next AI question, advance gates, and generate adversarial review from the browser.
+- **RDF handoff**: call POST /export/rdf or generate a report to create Turtle, JSON-LD, SHACL, SPARQL, and RDF mapping files under exports/.
 - **Deliverables**: generate report, snapshot, and Neptune export artifacts under `exports/`.
   1. Workshop summary: entities, relations, and verified questions.
   2. AWS architecture recommendation: Amazon Neptune sizing, data flow, compliance, and security controls.

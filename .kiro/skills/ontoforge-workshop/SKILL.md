@@ -63,10 +63,13 @@ Use `BASE=http://localhost:8000` for REST calls.
 
 For each customer answer provided by the operator:
 
-1. Extract the structure needed for the current stage.
-2. Apply it through the REST endpoint.
-3. Push a human-readable summary to `/narrate`.
-4. Give the operator a short spoken/text summary and ask the next single question.
+1. Record the answer as workflow evidence through `/workflow/answer` or `/claim`.
+2. Extract the structure needed for the current AI-ODLC stage.
+3. Apply workflow objects through `/story`, `/event`, `/question`, `/model-candidate`, `/data-source`, `/mapping`, or `/workflow/review`.
+4. Apply graph objects through `/entity`, `/relation`, `/instance`, `/edge`, and `/query`.
+5. Push a human-readable summary to `/narrate`.
+6. Check `/coverage` or `/workflow/gates`.
+7. Give the operator a short spoken/text summary and ask the next single question.
 
 Use `kind:"chat"` in `/narrate` if the conversation itself should appear in the browser timeline.
 
@@ -82,6 +85,64 @@ Use `kind:"chat"` in `/narrate` if the conversation itself should appear in the 
 ## 3. REST Cheat Sheet
 
 All requests use `Content-Type: application/json`.
+
+### AI-ODLC Workflow State
+
+Use these endpoints to make the AI-driven workshop state first-class. The browser AI-ODLC panel, autosave snapshot, report, and handoff package use this state.
+
+```bash
+curl -s -X POST $BASE/workflow/start -H 'Content-Type: application/json' -d '{
+  "language":"ko","scope":"one-day ontology discovery","reset":false}'
+
+curl -s -X POST $BASE/workflow/answer -H 'Content-Type: application/json' -d '{
+  "stage":"discovery","text":"The customer scenario or clarification...","status":"candidate"}'
+
+curl -s -X POST $BASE/story -H 'Content-Type: application/json' -d '{
+  "actor":"Quality manager","goal":"Trace defects faster",
+  "decision":"Identify affected supplier lots","success_metric":"Reduce RCA time",
+  "priority":"high"}'
+
+curl -s -X POST $BASE/event -H 'Content-Type: application/json' -d '{
+  "name":"DefectDetected","trigger":"Inspection result",
+  "state_change":"Product enters investigation"}'
+
+curl -s -X POST $BASE/question -H 'Content-Type: application/json' -d '{
+  "question":"Which supplier lots are connected to defective products?",
+  "expected_answer_shape":["Product","SupplierLot"],"priority":"high"}'
+
+curl -s -X POST $BASE/model-candidate -H 'Content-Type: application/json' -d '{
+  "kind":"entity","name":"Product","rationale":"Anchors defect traceability."}'
+
+curl -s -X POST $BASE/data-source -H 'Content-Type: application/json' -d '{
+  "name":"quality_inspection","type":"table","owner":"quality_team","freshness":"daily"}'
+
+curl -s -X POST $BASE/mapping -H 'Content-Type: application/json' -d '{
+  "source":"quality_inspection","source_field":"product_id",
+  "target":"Product.id","status":"available"}'
+
+curl -s -X POST $BASE/validation-query -H 'Content-Type: application/json' -d '{
+  "language":"openCypher","question":"Which supplier lots are connected to defective products?",
+  "query":"MATCH (p:Product)-[r]-(l:SupplierLot) RETURN p,r,l LIMIT 25",
+  "readiness":"ready_to_draft","status":"candidate"}'
+
+curl -s -X POST $BASE/rdf-decision -H 'Content-Type: application/json' -d '{
+  "topic":"base_iri","value":"https://example.com/quality/",
+  "status":"candidate"}'
+
+# Empty body asks OntoForge to generate an evidence-based adversarial review from current gates.
+curl -s -X POST $BASE/workflow/review -H 'Content-Type: application/json' -d '{
+  "risks":[{"text":"Supplier lot causality needs validation.","status":"open"}],
+  "action_items":[{"text":"Confirm supplier lot keys.","owner":"customer","status":"open"}]}'
+```
+
+Read state and gates:
+
+```bash
+curl -s $BASE/workflow/state
+curl -s $BASE/workflow/next-question
+curl -s $BASE/workflow/gates
+curl -s $BASE/coverage
+```
 
 ### Entity Type (T-Box)
 
@@ -157,6 +218,7 @@ curl -s -X POST $BASE/narrate -H 'Content-Type: application/json' -d '{
 ### Export / Deliverables
 
 - `POST /export/neptune` - openCypher script and Bulk Loader CSV files under `exports/`.
+- `POST /export/rdf` - Turtle ontology/instances, JSON-LD, SHACL seed shapes, SPARQL seed queries, and RDF mapping notes under `exports/rdf`.
 - `POST /export/report {"title":"...","lang":"ko|en|ja","descriptions":{...},"data_status":{...},"action_items":{...}}` - report, handoff, standalone snapshot HTML, and restore JSON.
 - `POST /import` - restore a workshop from `workshop_snapshot.json`.
 - `GET /files/workshop_report.html`
@@ -198,6 +260,27 @@ The workshop is gate-based. Do not advance until the current gate is complete.
 [A] Modeling -> Gate 1 Query Coverage -> Gate 2 Data Status
              -> Gate 3 Data Location -> [E] Architecture + Migration + Export
 ```
+
+AI-ODLC v2 is the top-level workshop lifecycle:
+
+```text
+Inception -> Discovery -> Event Discovery -> Story-to-Question
+          -> Model Synthesis -> Data Grounding -> Adversarial Review
+          -> Validation and Handoff
+```
+
+Use `/workflow/state`, `/workflow/gates`, and `/coverage` to keep the browser AI-ODLC cockpit and report aligned with the conversation. Do not advance a stage unless the current gate is pass or the operator explicitly accepts the risk.
+
+### AI-ODLC Stage Responsibilities
+
+- Inception: capture actor, goal, decision, success metric, scope, and selected language. Store through `/story` and `/workflow/start`.
+- Discovery: capture the domain narrative as claims through `/workflow/answer` or `/claim`; mark uncertainty with `candidate`, `assumed`, `missing_evidence`, `conflicting`, or `out_of_scope`.
+- Event Discovery: identify business events, commands, policies, and state changes through `/event`.
+- Story-to-Question Mapping: convert user stories into competency questions through `/question`.
+- Model Synthesis: create graph model candidates through `/model-candidate`, then apply accepted T-Box/A-Box objects through `/entity`, `/relation`, `/instance`, and `/edge`.
+- Data Grounding: map source systems, tables, files, APIs, logs, and event streams through `/data-source` and `/mapping`.
+- Adversarial Review: record assumptions, risks, contradictions, missing evidence, and action items through `/workflow/review`.
+- Validation and Handoff: run `/query`, narrate evidence as `qa`, verify `/coverage`, then export report/snapshot/Neptune artifacts.
 
 ### A. Ontology Modeling
 
