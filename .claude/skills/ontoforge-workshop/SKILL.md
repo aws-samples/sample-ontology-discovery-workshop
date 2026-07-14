@@ -133,6 +133,10 @@ curl -s -X POST $BASE/rdf-decision -H 'Content-Type: application/json' -d '{
 curl -s -X POST $BASE/workflow/review -H 'Content-Type: application/json' -d '{
   "risks":[{"text":"Supplier lot causality needs validation.","status":"open"}],
   "action_items":[{"text":"Confirm supplier lot keys.","owner":"customer","status":"open"}]}'
+
+# Run once only when the operator requests the bounded handoff check.
+curl -s -X POST $BASE/workflow/validate -H 'Content-Type: application/json' -d '{
+  "outdir":"./exports/validation","base_iri":"https://example.com/quality/"}'
 ```
 
 Read state and gates:
@@ -219,6 +223,7 @@ curl -s -X POST $BASE/narrate -H 'Content-Type: application/json' -d '{
 
 - `POST /export/neptune` - openCypher script and Bulk Loader CSV files under `exports/`.
 - `POST /export/rdf` - Turtle ontology/instances, JSON-LD, SHACL seed shapes, SPARQL seed queries, RDF mapping notes, and Neptune RDF handoff notes under `exports/rdf`.
+- `POST /workflow/validate` - one user-triggered static RDF/SPARQL/SHACL handoff check. It retains only the latest result, marks it stale after relevant changes, and writes validation reports; it does not execute SPARQL or establish formal SHACL conformance.
 - `POST /export/report {"title":"...","lang":"ko|en|ja","descriptions":{...},"data_status":{...},"action_items":{...}}` - report, handoff, standalone snapshot HTML, and restore JSON.
 - `POST /import` - restore a workshop from `workshop_snapshot.json`.
 - `GET /files/workshop_report.html`
@@ -280,7 +285,7 @@ Use `/workflow/state`, `/workflow/gates`, and `/coverage` to keep the browser AI
 - Model Synthesis: create graph model candidates through `/model-candidate`, then apply accepted T-Box/A-Box objects through `/entity`, `/relation`, `/instance`, and `/edge`.
 - Data Grounding: map source systems, tables, files, APIs, logs, and event streams through `/data-source` and `/mapping`.
 - Adversarial Review: record assumptions, risks, contradictions, missing evidence, and action items through `/workflow/review`.
-- Validation and Handoff: run `/query` so validation query seeds receive verification evidence, narrate evidence as `qa`, verify `/coverage`, then export report/snapshot/Neptune/RDF artifacts.
+- Validation and Handoff: run `/query` so validation query seeds receive verification evidence, narrate evidence as `qa`, verify `/coverage`, run `/workflow/validate` once when requested, then export report/snapshot/Neptune/RDF artifacts. Never poll or automatically retry validation.
 
 ### A. Ontology Modeling
 

@@ -264,6 +264,7 @@ class WorkflowState:
             "validation_queries": [],
             "rdf_decisions": [],
             "last_extraction": {},
+            "last_validation": {},
         }
 
     def reset(self) -> None:
@@ -285,6 +286,8 @@ class WorkflowState:
             base[key] = _list(base.get(key))
         if not isinstance(base.get("last_extraction"), dict):
             base["last_extraction"] = {}
+        if not isinstance(base.get("last_validation"), dict):
+            base["last_validation"] = {}
         self.data = base
         self.touch()
 
@@ -293,6 +296,9 @@ class WorkflowState:
 
     def to_dict(self, context: dict[str, Any] | None = None) -> dict[str, Any]:
         out = copy.deepcopy(self.data)
+        if out.get("last_validation"):
+            out["last_validation"]["freshness"] = self._validation_freshness(
+                context)
         out["stage_label"] = STAGE_LABELS.get(
             out.get("current_stage"), out.get("current_stage", ""))
         gates = self.gates(context)
@@ -304,6 +310,17 @@ class WorkflowState:
             "percent": round((passed / len(STAGES)) * 100),
         }
         return out
+
+    def _validation_freshness(self,
+                              context: dict[str, Any] | None = None) -> str:
+        validation = _dict(self.data.get("last_validation"))
+        expected = validation.get("source_fingerprint")
+        current = _dict(context).get("rdf_validation_source_fingerprint")
+        if not validation:
+            return "not_run"
+        if not expected or not current:
+            return str(validation.get("freshness") or "unknown")
+        return "current" if expected == current else "stale"
 
     def _next_id(self, collection: str, prefix: str) -> str:
         used = {str(i.get("id")) for i in _list(self.data.get(collection))
@@ -649,6 +666,108 @@ class WorkflowState:
             self.touch()
         return {"updated": updated, "evidence": evidence}
 
+    def record_static_validation(self, result: dict[str, Any]) -> dict[str, Any]:
+        """Record one bounded RDF handoff validation result.
+
+        Only the latest run is retained. This prevents repeated button clicks
+        from growing an unbounded monitoring history or duplicating review
+        chores during a one-day workshop.
+        """
+        if not isinstance(result, dict):
+            raise ValueError("validation result must be an object")
+        status = str(result.get("status") or "fail").lower()
+        if status not in {"pass", "warning", "fail"}:
+            status = "fail"
+        recorded = copy.deepcopy(result)
+        recorded["status"] = status
+        recorded.setdefault("scope", "static_handoff_validation")
+        recorded.setdefault("validated_at", _now())
+        recorded["freshness"] = "current"
+        self.data["last_validation"] = recorded
+
+        sparql = _dict(recorded.get("sparql"))
+        sparql_status = sparql.get("status", "fail")
+        sparql_ok = (
+            sparql_status == "pass" and int(sparql.get("query_count") or 0) > 0
+        )
+        sparql_evidence = {
+            "validated_at": recorded.get("validated_at"),
+            "scope": recorded.get("scope"),
+            "status": sparql_status,
+            "query_count": sparql.get("query_count", 0),
+            "executed": False,
+            "report": _dict(recorded.get("reports")).get("validation_json"),
+        }
+        updated_queries = 0
+        for item in _list(self.data.get("validation_queries")):
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("language", "")).lower() != "sparql":
+                continue
+            readiness = (
+                "validated_static" if sparql_ok
+                else ("needs_review" if sparql_status == "warning" else "needs_fix")
+            )
+            item["status"] = readiness
+            item["readiness"] = readiness
+            item["last_static_validation"] = copy.deepcopy(sparql_evidence)
+            item["updated_at"] = _now()
+            updated_queries += 1
+
+        finding_text = (
+            "Latest RDF handoff static validation failed; review the validation "
+            "report before technical handoff."
+        )
+        action_text = (
+            "Resolve the latest RDF/SPARQL/SHACL static validation failures and "
+            "rerun the on-demand check once."
+        )
+        review_items = [
+            item for item in _list(self.data.get("review_findings"))
+            if isinstance(item, dict) and item.get("text") == finding_text
+        ]
+        action_items = [
+            item for item in _list(self.data.get("action_items"))
+            if isinstance(item, dict) and item.get("text") == action_text
+        ]
+        if status == "fail":
+            if review_items:
+                finding = review_items[0]
+            else:
+                finding = self.add_unique_item("review_findings", "finding", {
+                    "text": finding_text,
+                    "stage": "validation_handoff",
+                    "source": "static_handoff_validation",
+                })
+            if action_items:
+                action = action_items[0]
+            else:
+                action = self.add_unique_item("action_items", "action", {
+                    "text": action_text,
+                    "stage": "validation_handoff",
+                    "source": "static_handoff_validation",
+                    "owner": "operator",
+                })
+            for item in (finding, action):
+                item["status"] = "open"
+                item.pop("resolved_at", None)
+                item["validation_summary"] = recorded.get("summary")
+                item["validation_report"] = _dict(recorded.get("reports")).get(
+                    "validation_markdown")
+                item["updated_at"] = _now()
+        else:
+            for item in review_items + action_items:
+                item["status"] = "resolved"
+                item["resolved_at"] = _now()
+                item["updated_at"] = _now()
+
+        self.touch()
+        return {
+            "status": status,
+            "updated_queries": updated_queries,
+            "latest_only": True,
+        }
+
     def gates(self, context: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
         ctx = context or {}
         graph = _dict(ctx.get("graph"))
@@ -748,13 +867,45 @@ class WorkflowState:
         )
 
         action_items = _list(self.data.get("action_items"))
+        open_action_items = [
+            item for item in action_items
+            if isinstance(item, dict) and item.get("status") != "resolved"
+        ]
+        last_validation = _dict(self.data.get("last_validation"))
+        validation_freshness = self._validation_freshness(ctx)
+        has_open_validation_action = any(
+            isinstance(item, dict)
+            and item.get("source") == "static_handoff_validation"
+            and item.get("status") != "resolved"
+            for item in open_action_items
+        )
+        static_validation_ok = (
+            not last_validation
+            or last_validation.get("status") in {"pass", "warning"}
+            and validation_freshness != "stale"
+        )
         gates["validation_handoff"] = _gate(
-            verified_count > 0 and len(action_items) > 0,
+            verified_count > 0 and len(action_items) > 0 and static_validation_ok
+            and not has_open_validation_action,
             missing=[
                 *([] if verified_count else ["verified query"]),
                 *([] if action_items else ["handoff action item"]),
+                *([] if not has_open_validation_action
+                   else ["unresolved RDF validation action"]),
+                *([] if static_validation_ok else [
+                    "current RDF static validation"
+                    if validation_freshness == "stale"
+                    else "RDF static validation failures"
+                ]),
             ],
-            evidence={"verified_queries": verified_count, "action_items": len(action_items)},
+            evidence={
+                "verified_queries": verified_count,
+                "action_items": len(action_items),
+                "open_action_items": len(open_action_items),
+                "open_rdf_validation_action": has_open_validation_action,
+                "rdf_static_validation": last_validation.get("status", "not_run"),
+                "rdf_validation_freshness": validation_freshness,
+            },
         )
         return gates
 

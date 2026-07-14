@@ -388,6 +388,7 @@ Expected outputs:
 - action items by owner;
 - Neptune export readiness;
 - RDF/SHACL readiness notes;
+- latest on-demand static validation evidence and freshness, when requested;
 - report and workshop ZIP.
 
 Gate to complete:
@@ -481,6 +482,7 @@ POST /workflow/answer
 POST /workflow/clarify
 POST /workflow/advance
 POST /workflow/review
+POST /workflow/validate
 GET  /workflow/next-question
 GET  /workflow/gates
 
@@ -598,6 +600,14 @@ rdf_mapping.md
 
 Property graph export should remain supported. The workflow should produce both property graph and RDF handoff notes when required.
 
+### Bounded On-demand Validation Loop
+
+The validation loop is deliberately user-triggered and single-run. In the cockpit or through `POST /workflow/validate`, OntoForge generates the current RDF handoff bundle, checks required artifacts, JSON-LD structure, read-only SPARQL seed syntax, and SHACL/T-Box structural coverage, then stores only the latest result as workflow evidence. Source and bundle fingerprints mark that result `stale` if relevant model or workflow inputs later change; this is an on-read comparison, not background monitoring.
+
+A failed run produces at most one deduplicated review finding and one action item. The operator fixes the model or decision, then chooses whether to rerun once; a passing rerun resolves those generated items. This keeps the loop useful without turning the AI assistant into a babysitter. No scheduler, polling, background worker, continuous monitoring, or automatic retry is part of this workflow.
+
+The scope is `static_handoff_validation`. It does not execute SPARQL, run a SHACL engine, establish data conformance, perform OWL reasoning, or validate production Neptune performance. Those remain explicit technical handoff tasks.
+
 ## Gate Summary
 
 | Gate | Required Evidence |
@@ -609,15 +619,15 @@ Property graph export should remain supported. The workflow should produce both 
 | Model Synthesis | candidate T-Box/A-Box connected to questions |
 | Data Grounding | source mapping and readiness status |
 | Adversarial Review | assumptions, risks, contradictions, gaps |
-| Validation and Handoff | verified queries, report, exports, action items |
+| Validation and Handoff | verified queries, current validation evidence when requested, report, exports, action items |
 
 ## Implementation Roadmap
 
 ## v2 Implementation Status
 
-The v2 implementation delivers a working AI-ODLC vertical slice: server-side workflow state, deterministic answer processing, workflow REST endpoints, evidence-aware next-question generation, automatic adversarial review generation, query verification evidence tracking, workflow state in snapshot/autosave/import/report paths, an interactive browser AI-ODLC cockpit, AI-ODLC report sections, updated Claude/Kiro workshop skill instructions, RDF/SHACL handoff export, Neptune RDF follow-up notes, and smoke/unit checks.
+The v2 implementation delivers a working AI-ODLC vertical slice: server-side workflow state, deterministic answer processing, workflow REST endpoints, evidence-aware next-question generation, automatic adversarial review generation, query verification evidence tracking, workflow state in snapshot/autosave/import/report paths, an interactive browser AI-ODLC cockpit, AI-ODLC report sections, updated Claude/Kiro workshop skill instructions, RDF/SHACL handoff export, an on-demand bounded static validation loop, Neptune RDF follow-up notes, and smoke/unit checks.
 
-RDF/SHACL support in v2 is intentionally a handoff layer, not production reasoning. It generates Turtle, JSON-LD, SHACL seed shapes, SPARQL seed queries, mapping notes, and Neptune RDF follow-up notes. Full SPARQL execution/validation, OWL reasoning, named graph policy, and production-grade SHACL constraint design remain follow-up work.
+RDF/SHACL support in v2 is intentionally a handoff layer, not production reasoning. It generates Turtle, JSON-LD, SHACL seed shapes, SPARQL seed queries, mapping notes, Neptune RDF follow-up notes, and optional static validation reports. Full SPARQL execution, SHACL engine conformance, OWL reasoning, named graph policy, and production-grade SHACL constraint design remain follow-up work.
 
 ### Phase 1: Documented Workflow and Agent Skill
 
@@ -646,6 +656,7 @@ RDF/SHACL support in v2 is intentionally a handoff layer, not production reasoni
 - Track query readiness and verification evidence.
 - Add optional SPARQL seed query candidates.
 - Add SHACL seed shape generation for required properties, datatypes, and cardinality notes.
+- Add one user-triggered static handoff validation and retain only its latest evidence.
 - Execute and validate SPARQL candidates in a future phase.
 
 ### Phase 5: Export and Handoff Expansion

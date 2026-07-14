@@ -16,6 +16,7 @@
 5. **Neptune 익스포트** (openCypher 스크립트 + Bulk Loader CSV)
 6. **AI-ODLC 워크플로우**: 1-day AI 주도 온톨로지 디스커버리를 claims, user stories, events, competency questions, data sources, mappings, validation query seeds, RDF decisions, risks, action items, gates로 추적
 7. **RDF/SHACL 인계 산출물**: Turtle ontology/instances, JSON-LD, SHACL seed shapes, SPARQL seed queries, RDF mapping notes, Neptune RDF follow-up notes
+8. **제한된 정적 검증**: RDF/SPARQL/SHACL 인계 산출물을 요청 시 1회 검증하고 자동 감시는 하지 않음
 
 자세한 설계·보안 제약·범위는 [`docs/DESIGN.md`](./docs/DESIGN.md)와
 [`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md), [`docs/AI_ODLC_WORKFLOW.md`](./docs/AI_ODLC_WORKFLOW.md), 대화 스킬은
@@ -27,6 +28,7 @@
 - **AI-ODLC Cockpit**: 우측 패널에서 현재 stage, gate, next question, evidence count, detailed evidence cards를 보고, 사용자 답변/데이터 구조를 직접 입력해 `/workflow/answer`로 반영할 수 있다.
 - **적대적 리뷰**: cockpit의 리뷰 버튼 또는 `/workflow/review`로 현재 gate와 evidence gap을 기반으로 assumptions, risks, action items를 생성한다.
 - **RDF 인계**: `POST /export/rdf` 또는 report export로 `exports/rdf/` 또는 `exports/report/rdf/`에 RDF/SHACL/SPARQL/Neptune RDF follow-up 산출물을 생성한다.
+- **제한된 검증 루프**: cockpit 버튼 또는 `POST /workflow/validate`로 RDF/SPARQL/SHACL 인계 산출물을 사용자가 원할 때 1회 정적 검증한다. 최신 결과 1건만 보존하며 자동 폴링·재시도는 하지 않는다.
 - **워크샵 인계 산출물**: `📄 보고서` 버튼 → `exports/report/`에 생성
   1. 워크샵 서머리 (엔티티·관계·검증 질의)
   2. AWS 구축 아키텍처 제안 (Neptune 규모 자동 추정 + 데이터 흐름 + 컴플라이언스)
@@ -37,6 +39,8 @@
 
 ### 질의 실행 대상
 현재 로컬 Kùzu 그래프에 openCypher를 실행하고 Cytoscape에서 결과를 시각화한다. 성공한 질의는 workflow validation query seed에 검증 evidence로 기록된다. 리모트 Neptune 라이브 쿼리는 범위 밖이며 현재는 익스포트와 handoff note만 제공한다.
+
+`POST /workflow/validate`는 필수 RDF 산출물, JSON-LD 구조, 읽기 전용 SPARQL seed 구문, SHACL과 T-Box의 구조적 정합성만 확인한다. SPARQL을 실행하거나 정식 SHACL conformance를 판정하지 않는다. 결과는 `validation_report.json`과 `validation_report.md`에 기록되고, 이후 관련 입력이 바뀌면 재실행 없이 최신 결과를 `stale`로 표시한다. 스케줄러·폴링·백그라운드 작업·자동 재시도는 없다.
 
 ## 빠른 시작
 

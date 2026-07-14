@@ -71,9 +71,18 @@ def export_all(g: OntologyGraph, outdir: str = "./exports/report",
 
     try:
         from . import rdf_export as rdfx  # noqa: PLC0415
-        result["rdf"] = rdfx.export_all(
+        rdf_result = rdfx.export_all(
             g, os.path.join(outdir, "rdf"), workflow,
             rdf_base_iri or rdfx.DEFAULT_BASE_IRI)
+        validation = (workflow or {}).get("last_validation") or {}
+        if validation:
+            from . import rdf_validation as rdfv  # noqa: PLC0415
+            validation_copy = dict(validation)
+            validation_copy["report_bundle_path"] = os.path.join(outdir, "rdf")
+            report_paths = rdfv.write_reports(
+                validation_copy, os.path.join(outdir, "rdf"))
+            rdf_result.update(report_paths)
+        result["rdf"] = rdf_result
     except Exception as e:  # noqa: BLE001
         result["rdf_error"] = str(e)
 

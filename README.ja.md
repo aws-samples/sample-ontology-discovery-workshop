@@ -16,6 +16,7 @@
 5. **Neptune エクスポート**（openCypher スクリプト + Bulk Loader CSV）
 6. **AI-ODLC ワークフロー**: 1-day AI-driven ontology discovery を claims, user stories, events, competency questions, data sources, mappings, validation query seeds, RDF decisions, risks, action items, gates として追跡
 7. **RDF/SHACL 引継成果物**: Turtle ontology/instances, JSON-LD, SHACL seed shapes, SPARQL seed queries, RDF mapping notes, Neptune RDF follow-up notes
+8. **限定された静的検証**: RDF/SPARQL/SHACL 引継成果物を要求時に1回検証し、自動監視は行わない
 
 詳細な設計・セキュリティ制約・スコープは [`docs/DESIGN.md`](./docs/DESIGN.md) と
 [`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md)、[`docs/AI_ODLC_WORKFLOW.md`](./docs/AI_ODLC_WORKFLOW.md) を、対話スキルは
@@ -27,6 +28,7 @@
 - **AI-ODLC Cockpit**: 右パネルで current stage, gates, next question, evidence count, detailed evidence cards を確認し、ユーザー回答やデータ構造を `/workflow/answer` に直接反映できる。
 - **敵対的レビュー**: cockpit のレビュー操作または `/workflow/review` により、現在の gates と evidence gaps から assumptions, risks, action items を生成する。
 - **RDF 引継**: `POST /export/rdf` または report export により、`exports/rdf/` または `exports/report/rdf/` に RDF/SHACL/SPARQL/Neptune RDF follow-up 成果物を生成する。
+- **限定された検証ループ**: cockpit ボタンまたは `POST /workflow/validate` により、RDF/SPARQL/SHACL 引継成果物をユーザー操作で1回だけ静的検証する。最新結果1件だけを保持し、自動ポーリングや再試行は行わない。
 - **ワークショップ引継成果物**: `📄 レポート` ボタン → `exports/report/` に生成
   1. ワークショップサマリー（エンティティ・関係・検証クエリ）
   2. AWS 構築アーキテクチャ提案（Neptune 規模の自動推定 + データフロー + コンプライアンス）
@@ -37,6 +39,8 @@
 
 ### クエリ実行対象
 現在はローカル Kùzu グラフに対して openCypher を実行し、Cytoscape で結果を可視化します。成功したクエリは workflow validation query seed に verification evidence として記録されます。リモート Neptune へのライブクエリはスコープ外で、現時点ではエクスポートと handoff note のみを提供します。
+
+`POST /workflow/validate` は必須 RDF 成果物、JSON-LD 構造、読み取り専用 SPARQL seed 構文、SHACL と T-Box の構造的整合性のみを確認する。SPARQL 実行や正式な SHACL conformance 判定は行わない。結果は `validation_report.json` と `validation_report.md` に記録され、その後に関連入力が変わると再実行せず最新結果を `stale` と表示する。スケジューラ、ポーリング、バックグラウンド処理、自動再試行はない。
 
 ## クイックスタート
 

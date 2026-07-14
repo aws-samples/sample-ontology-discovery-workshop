@@ -16,6 +16,7 @@ OntoForge is a local workshop tool for building and validating an ontology while
 4. Generates ontology documentation in Markdown.
 5. Exports Amazon Neptune-ready artifacts: openCypher scripts and Bulk Loader CSV files.
 6. Exports RDF handoff artifacts: Turtle ontology/instances, JSON-LD, SHACL seed shapes, SPARQL seed queries, RDF mapping notes, and Neptune RDF follow-up notes.
+7. Runs a bounded, on-demand static validation of RDF/SPARQL/SHACL handoff artifacts without background monitoring.
 
 See [`docs/DESIGN.md`](./docs/DESIGN.md), [`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md), [`docs/AI_ODLC_WORKFLOW.md`](./docs/AI_ODLC_WORKFLOW.md), and [`skills/WORKSHOP_SKILLS.md`](./skills/WORKSHOP_SKILLS.md) for design, security, AI-ODLC workflow, and workshop skill details.
 
@@ -38,6 +39,7 @@ Graph identifiers remain standardized in English regardless of workshop language
 - **AI-ODLC workflow**: run a one-day AI-guided ontology discovery lifecycle with first-class stories, claims, events, competency questions, data sources, mappings, validation query seeds, RDF decisions, risks, action items, gate checks, and coverage.
 - **Interactive cockpit**: submit workflow answers/data structures, request the next AI question, advance gates, and generate adversarial review from the browser.
 - **RDF handoff**: call POST /export/rdf or generate a report to create Turtle, JSON-LD, SHACL, SPARQL, RDF mapping, and Neptune RDF follow-up files under exports/.
+- **Bounded validation**: run `POST /workflow/validate` or use the cockpit button for one on-demand static RDF/SPARQL/SHACL handoff check. It keeps only the latest result and never polls or retries automatically.
 - **Deliverables**: generate report, snapshot, and Neptune export artifacts under `exports/`.
   1. Workshop summary: entities, relations, and verified questions.
   2. AWS architecture recommendation: Amazon Neptune sizing, data flow, compliance, and security controls.
@@ -48,6 +50,8 @@ Graph identifiers remain standardized in English regardless of workshop language
 ## Query Target
 
 The local workshop runs openCypher against the embedded Kuzu graph, visualizes the result in Cytoscape, and records successful query evidence against workflow validation query seeds. Live remote Amazon Neptune queries are out of scope for this sample; the current Neptune path is export and handoff notes only.
+
+`POST /workflow/validate` is narrower: it verifies required RDF artifacts, JSON-LD structure, read-only SPARQL seed syntax, and SHACL/T-Box structural coverage. It does not execute SPARQL or claim formal SHACL conformance. Results are written to `validation_report.json` and `validation_report.md`; relevant later changes mark the latest result `stale` without rerunning it. There is no scheduler, polling, background worker, or automatic retry.
 
 ## Quick Start
 

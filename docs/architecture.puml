@@ -10,6 +10,7 @@ rectangle "Local workstation" {
   component "AI-ODLC workflow state\nclaims, gates, evidence" as Workflow
   component "Report/export pipeline" as Export
   component "RDF/SHACL exporter\nTTL, JSON-LD, SPARQL" as RDF
+  component "Bounded static validator\non-demand, latest result only" as Validator
   folder "exports/\nreports, snapshots, CSV, RDF" as Files
 }
 cloud "Anthropic Claude API\noptional external call" as Claude
@@ -26,8 +27,11 @@ Workflow --> API : gates, next question,\nquery evidence
 Skills --> Claude : HTTPS only\nANTHROPIC_API_KEY
 API --> Export : report / snapshot / Neptune export
 API --> RDF : /export/rdf\nRDF handoff bundle
+API --> Validator : /workflow/validate\none explicit run
+RDF --> Validator : current handoff bundle
 Export --> Files : constrained to ./exports\n0600 permissions
 RDF --> Files : ontology.ttl, shapes.ttl,\nqueries.sparql, handoff notes
+Validator --> Files : validation_report.json/md\nno SPARQL or SHACL engine execution
 Files --> S3 : operator upload\nSSE-KMS + HTTPS-only
 S3 --> Neptune : Bulk Loader IAM role
 

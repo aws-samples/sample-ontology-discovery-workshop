@@ -11,6 +11,7 @@
 - Added openCypher query verification evidence tracking for workflow validation query seeds.
 - Added workflow state to autosave snapshots, import/restore, standalone snapshot HTML, report generation, and the interactive browser AI-ODLC cockpit panel with detailed evidence cards.
 - Added RDF/SHACL handoff exports with Turtle, JSON-LD, SHACL seed shapes, SPARQL seed queries, RDF mapping notes, and Neptune RDF follow-up notes.
+- Added a user-triggered, latest-result-only RDF/SPARQL/SHACL static validation loop with cockpit/API controls, workflow evidence, reports, and no polling or automatic retry.
 - Updated Claude/Kiro workshop skill instructions to drive workshops through AI-ODLC workflow evidence and gates.
 
 ## v0.1-beta - 2026-06-06

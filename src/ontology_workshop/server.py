@@ -31,6 +31,7 @@ from . import skills as sk
 from . import report_export as rx
 from . import snapshot_export as sx
 from . import rdf_export as rdfx
+from . import rdf_validation as rdfv
 from .workflow import WorkflowState, STAGES, STAGE_LABELS
 from .security import audit_log, safe_export_path
 
@@ -92,6 +93,9 @@ def _workflow_context() -> dict:
         "entity_names": list(tb.get("entities", {}).keys()),
         "relation_names": list(tb.get("relations", {}).keys()),
         "verified_count": len(verified_queries),
+        "rdf_validation_source_fingerprint": rdfv.source_fingerprint(
+            tb, snap, workflow.data,
+            (workflow.data.get("last_validation") or {}).get("base_iri")),
     }
 
 
@@ -402,6 +406,11 @@ class WorkflowReviewIn(BaseModel):
     action_items: list[dict] = []
 
 
+class WorkflowValidateIn(BaseModel):
+    outdir: str = "./exports/validation"
+    base_iri: str | None = None
+
+
 class WorkflowItemIn(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -514,6 +523,46 @@ async def workflow_review(body: WorkflowReviewIn):
         risks=len(added["risks"]),
         action_items=len(added["action_items"]))
     return {"ok": True, "added": added, "workflow": _workflow_payload()}
+
+
+@app.post("/workflow/validate")
+async def workflow_validate(body: WorkflowValidateIn | None = None):
+    """Run one explicit static RDF/SPARQL/SHACL handoff validation."""
+    body = body or WorkflowValidateIn()
+    try:
+        base_iri = (body.base_iri or last_report.get("rdf_base_iri")
+                    or rdfx.DEFAULT_BASE_IRI)
+        bundle = rdfx.export_all(g, body.outdir, _workflow_payload(), base_iri)
+        result = rdfv.validate_bundle(bundle, g.tbox())
+        result["base_iri"] = base_iri
+        result["source_fingerprint"] = rdfv.source_fingerprint(
+            g.tbox(), g.snapshot(), workflow.data, base_iri)
+        result["freshness"] = "current"
+        reports = rdfv.write_reports(result, body.outdir)
+        result["reports"] = reports
+        workflow.record_static_validation(result)
+    except (OSError, UnicodeError, ValueError) as e:
+        return _json({"ok": False, "error": str(e)}, status_code=400)
+
+    await _append_narration(
+        "reflect", "RDF handoff static validation", result["summary"], "agent",
+        {"validation": {
+            "scope": result["scope"],
+            "status": result["status"],
+            "counts": result["counts"],
+            "reports": reports,
+        }})
+    await _save_and_broadcast_workflow(
+        "workflow_static_validation_recorded",
+        scope=result["scope"], status=result["status"],
+        passed=result["counts"]["passed"],
+        warnings=result["counts"]["warnings"],
+        failed=result["counts"]["failed"])
+    return {
+        "ok": result["status"] != "fail",
+        "validation": result,
+        "workflow": _workflow_payload(),
+    }
 
 
 @app.get("/workflow/gates")

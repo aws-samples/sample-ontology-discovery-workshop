@@ -135,9 +135,9 @@
   .odlc-mini .v{font-size:11px;color:var(--ink);line-height:1.4;word-break:break-word}
   .odlc-mini .meta{font-size:10px;color:var(--muted);margin-top:3px}
   .odlc-mini .status{float:right;border-radius:99px;padding:1px 6px;border:1px solid var(--line);font-size:9px}
-  .odlc-mini .status.verified,.odlc-mini .status.available,.odlc-mini .status.confirmed{border-color:#1d5e4c;color:var(--accent)}
-  .odlc-mini .status.missing,.odlc-mini .status.failed,.odlc-mini .status.conflicting{border-color:#5a2730;color:#ff8aa0}
-  .odlc-mini .status.unknown,.odlc-mini .status.partial,.odlc-mini .status.candidate{border-color:#5e4a1d;color:var(--warn)}
+  .odlc-mini .status.verified,.odlc-mini .status.pass,.odlc-mini .status.validated_static,.odlc-mini .status.available,.odlc-mini .status.confirmed{border-color:#1d5e4c;color:var(--accent)}
+  .odlc-mini .status.missing,.odlc-mini .status.failed,.odlc-mini .status.fail,.odlc-mini .status.conflicting{border-color:#5a2730;color:#ff8aa0}
+  .odlc-mini .status.unknown,.odlc-mini .status.partial,.odlc-mini .status.warning,.odlc-mini .status.stale,.odlc-mini .status.candidate{border-color:#5e4a1d;color:var(--warn)}
 </style>
 </head>
 <body>
@@ -224,6 +224,7 @@
             <button onclick="advanceWorkflow(false)" data-i18n="wfAdvance">Gate 통과</button>
             <button onclick="advanceWorkflow(true)" data-i18n="wfForce">강제 진행</button>
             <button onclick="reviewWorkflow()" data-i18n="wfReview">적대적 리뷰</button>
+            <button onclick="validateWorkflow()" data-i18n="wfValidate">RDF/SHACL 검증</button>
             <button onclick="refreshNextQuestion()" data-i18n="wfNextQ">다음 질문</button>
           </div>
           <div class="odlc-status" id="wfStatus"></div>
@@ -257,8 +258,8 @@ const I18N={
     hCurrent:"현재 상태", sEnt:"엔티티 타입 (T-Box)", sRel:"관계 타입 (T-Box)", sNode:"인스턴스 노드 (A-Box)", sEdge:"인스턴스 엣지 (A-Box)",
     hWorkflow:"AI-ODLC", wfProgress:"진행률", wfClaims:"Claims", wfQuestions:"Questions", wfMappings:"Mappings", wfActions:"Actions", wfQueries:"Query seeds",
     wfStageInput:"stage", wfAnswerInput:"answer / data structure", wfAnswerPh:"사용자 스토리, 도메인 이벤트, 질문, 테이블 스키마, RDF 결정 등을 입력하세요. JSON도 가능합니다.",
-    wfSubmit:"AI-ODLC 답변 반영", wfAdvance:"Gate 통과", wfForce:"강제 진행", wfReview:"적대적 리뷰", wfNextQ:"다음 질문",
-    wfNeedAnswer:"답변을 입력하세요.", wfSubmitting:"반영 중…", wfDone:"반영 완료", wfAdvancing:"진행 중…", wfReviewing:"리뷰 생성 중…", wfNexting:"다음 질문 갱신 중…",
+    wfSubmit:"AI-ODLC 답변 반영", wfAdvance:"Gate 통과", wfForce:"강제 진행", wfReview:"적대적 리뷰", wfValidate:"RDF/SHACL 검증", wfNextQ:"다음 질문",
+    wfNeedAnswer:"답변을 입력하세요.", wfSubmitting:"반영 중…", wfDone:"반영 완료", wfAdvancing:"진행 중…", wfReviewing:"리뷰 생성 중…", wfValidating:"정적 검증 중…", wfNexting:"다음 질문 갱신 중…",
     hEnt:"엔티티 타입", hRel:"관계 타입", hInsp:"노드 인스펙터", inspEmpty:"노드를 클릭하면 속성이 표시됩니다.",
     none:"아직 없음", noProps:"(속성 없음)", relation:"관계", type:"타입", rows:"건", focusBtn:"🔍 그래프에서 이 결과만 보기",
     snapshotTitle:"워크샵 스냅샷", readOnlySnapshot:"읽기 전용 스냅샷",
@@ -283,8 +284,8 @@ const I18N={
     hCurrent:"Current State", sEnt:"Entity types (T-Box)", sRel:"Relation types (T-Box)", sNode:"Instance nodes (A-Box)", sEdge:"Instance edges (A-Box)",
     hWorkflow:"AI-ODLC", wfProgress:"Progress", wfClaims:"Claims", wfQuestions:"Questions", wfMappings:"Mappings", wfActions:"Actions", wfQueries:"Query seeds",
     wfStageInput:"stage", wfAnswerInput:"answer / data structure", wfAnswerPh:"Enter a user story, domain event, question, table schema, RDF decision, or JSON payload.",
-    wfSubmit:"Apply AI-ODLC answer", wfAdvance:"Pass gate", wfForce:"Force advance", wfReview:"Adversarial review", wfNextQ:"Next question",
-    wfNeedAnswer:"Enter an answer first.", wfSubmitting:"Applying…", wfDone:"Applied", wfAdvancing:"Advancing…", wfReviewing:"Generating review…", wfNexting:"Refreshing next question…",
+    wfSubmit:"Apply AI-ODLC answer", wfAdvance:"Pass gate", wfForce:"Force advance", wfReview:"Adversarial review", wfValidate:"Validate RDF/SHACL", wfNextQ:"Next question",
+    wfNeedAnswer:"Enter an answer first.", wfSubmitting:"Applying…", wfDone:"Applied", wfAdvancing:"Advancing…", wfReviewing:"Generating review…", wfValidating:"Running static validation…", wfNexting:"Refreshing next question…",
     hEnt:"Entity types", hRel:"Relation types", hInsp:"Node Inspector", inspEmpty:"Click a node to see its properties.",
     none:"None yet", noProps:"(no properties)", relation:"relation", type:"type", rows:"rows", focusBtn:"🔍 Show only this result",
     snapshotTitle:"Workshop Snapshot", readOnlySnapshot:"Read-only snapshot",
@@ -309,8 +310,8 @@ const I18N={
     hCurrent:"現在の状態", sEnt:"エンティティ型 (T-Box)", sRel:"リレーション型 (T-Box)", sNode:"インスタンスノード (A-Box)", sEdge:"インスタンスエッジ (A-Box)",
     hWorkflow:"AI-ODLC", wfProgress:"進捗", wfClaims:"Claims", wfQuestions:"Questions", wfMappings:"Mappings", wfActions:"Actions", wfQueries:"Query seeds",
     wfStageInput:"stage", wfAnswerInput:"answer / data structure", wfAnswerPh:"ユーザーストーリー、ドメインイベント、質問、テーブルスキーマ、RDF決定、JSONを入力してください。",
-    wfSubmit:"AI-ODLC回答を反映", wfAdvance:"Gate通過", wfForce:"強制進行", wfReview:"敵対的レビュー", wfNextQ:"次の質問",
-    wfNeedAnswer:"回答を入力してください。", wfSubmitting:"反映中…", wfDone:"反映完了", wfAdvancing:"進行中…", wfReviewing:"レビュー生成中…", wfNexting:"次の質問を更新中…",
+    wfSubmit:"AI-ODLC回答を反映", wfAdvance:"Gate通過", wfForce:"強制進行", wfReview:"敵対的レビュー", wfValidate:"RDF/SHACL検証", wfNextQ:"次の質問",
+    wfNeedAnswer:"回答を入力してください。", wfSubmitting:"反映中…", wfDone:"反映完了", wfAdvancing:"進行中…", wfReviewing:"レビュー生成中…", wfValidating:"静的検証中…", wfNexting:"次の質問を更新中…",
     hEnt:"エンティティ型", hRel:"リレーション型", hInsp:"ノードインスペクター", inspEmpty:"ノードをクリックすると属性が表示されます。",
     none:"まだありません", noProps:"(属性なし)", relation:"リレーション", type:"タイプ", rows:"件", focusBtn:"🔍 この結果だけグラフ表示",
     snapshotTitle:"ワークショップスナップショット", readOnlySnapshot:"読み取り専用スナップショット",
@@ -545,7 +546,9 @@ function updateWorkflow(){
   const sel=document.getElementById('wfStageSelect');
   if(sel && wf.current_stage) sel.value=wf.current_stage;
   const status=document.getElementById('wfStatus');
-  if(status && wf.last_extraction && wf.last_extraction.summary){
+  if(status && wf.last_validation && wf.last_validation.summary){
+    status.textContent=wf.last_validation.summary;
+  }else if(status && wf.last_extraction && wf.last_extraction.summary){
     status.textContent=wf.last_extraction.summary;
   }
   renderWorkflowDetail(wf);
@@ -555,6 +558,13 @@ function renderWorkflowDetail(wf){
   const box=document.getElementById('wfDetail');
   if(!box) return;
   const cards=[];
+  if(wf.last_validation && wf.last_validation.status){
+    const c=wf.last_validation.counts||{};
+    const vst=wf.last_validation.freshness==='stale'?'stale':wf.last_validation.status;
+    cards.push(miniCard('static validation', wf.last_validation.summary||'-',
+      vst,
+      `${wf.last_validation.freshness||'unknown'} · ${c.passed||0} pass · ${c.warnings||0} warning · ${c.failed||0} fail · no SPARQL/SHACL engine execution`));
+  }
   (wf.competency_questions||[]).slice(0,3).forEach(q=>cards.push(miniCard(
     'question', q.question||q.text||'-', q.query_readiness||q.status||'candidate',
     (q.expected_answer_shape||[]).join(', '))));
@@ -657,6 +667,20 @@ async function reviewWorkflow(){
   if(d.workflow) lastWorkflow=d.workflow;
   updateWorkflow();
   setWorkflowStatus(d.ok ? t('wfDone') : (d.error||'error'));
+}
+
+async function validateWorkflow(){
+  setWorkflowStatus(t('wfValidating'));
+  const r=await fetch('/workflow/validate',{
+    method:'POST',
+    headers:authHeaders({'Content-Type':'application/json'}),
+    body:JSON.stringify({})
+  });
+  const d=await r.json();
+  if(d.workflow) lastWorkflow=d.workflow;
+  updateWorkflow();
+  const v=d.validation||{};
+  setWorkflowStatus(v.summary || d.error || (d.ok?t('wfDone'):'error'));
 }
 
 async function refreshNextQuestion(){

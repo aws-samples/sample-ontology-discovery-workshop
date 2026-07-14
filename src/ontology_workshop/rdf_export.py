@@ -335,7 +335,7 @@ def export_neptune_rdf_handoff_md(g: OntologyGraph, workflow: dict,
         "- instances.ttl: current A-Box individuals and relationship triples.",
         "- ontology.jsonld: exchange form for downstream RDF tooling.",
         "- shapes.ttl: seed SHACL constraints for datatype/key checks.",
-        "- queries.sparql: seed SPARQL queries requiring validation.",
+        "- queries.sparql: seed SPARQL queries requiring execution validation.",
         "",
         "## Neptune Follow-up Checklist",
         "",
@@ -357,7 +357,7 @@ def export_neptune_rdf_handoff_md(g: OntologyGraph, workflow: dict,
             lines.append(f"| {item.get('topic', '-')} | {item.get('value', item.get('text', '-'))} | {item.get('status', '-')} |")
     queries = [q for q in workflow.get("validation_queries") or [] if str(q.get("language", "")).lower() == "sparql"]
     if queries:
-        lines += ["", "## SPARQL Seeds Requiring Validation", ""]
+        lines += ["", "## SPARQL Seed Readiness", ""]
         for q in queries[:8]:
             lines.append(f"- {q.get('question') or q.get('question_id') or 'question'}: {q.get('readiness', 'seed_only')}")
     _write(path, "\n".join(lines).rstrip() + "\n")

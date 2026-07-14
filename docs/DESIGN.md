@@ -13,6 +13,7 @@ Core components:
 * `ontology_workshop.skills`: Claude API or offline-rule extraction.
 * `ontology_workshop.workflow`: AI-ODLC stage, claim, story, event, question, data mapping, validation query, RDF decision, risk, and gate state.
 * `ontology_workshop.rdf_export`: RDF/JSON-LD/SHACL/SPARQL and Neptune RDF handoff artifact generation.
+* `ontology_workshop.rdf_validation`: dependency-free, on-demand structural validation of the RDF handoff bundle.
 * `static/index.html`: Cytoscape.js browser viewer using a local vendored script.
 * `exports/`: reports, static snapshots, openCypher, Neptune Bulk Loader CSV, RDF handoff bundles, and autosave session snapshots.
 
@@ -32,13 +33,15 @@ AI-ODLC is the workshop lifecycle layer around the graph. It stores evidence tha
 
 `POST /workflow/answer` is the main entry point. It records a claim, conservatively extracts workflow objects from natural language or JSON, updates gate coverage, generates the next focused question, and broadcasts the new workflow state to the browser cockpit. It does not claim production ontology readiness.
 
-The browser cockpit shows current stage, gates, next question, evidence counts, detailed evidence cards, and actions for answer submission, gate advancement, next-question refresh, and adversarial review generation.
+The browser cockpit shows current stage, gates, next question, evidence counts, detailed evidence cards, and actions for answer submission, gate advancement, next-question refresh, adversarial review generation, and one explicit RDF/SHACL validation run.
+
+`POST /workflow/validate` generates a current RDF bundle and performs one bounded `static_handoff_validation`. It checks required/non-empty files, JSON-LD structure, Turtle prefixes and balanced syntax, T-Box declarations, read-only SPARQL seed structure, and SHACL seed coverage for classes, datatypes, primary keys, and relationships. Only `last_validation` is retained. Source and bundle fingerprints make an older result visibly `stale` after relevant graph/workflow changes. A failed run creates at most one deduplicated finding and action; a passing rerun resolves them. There is no scheduler, polling, background worker, or automatic retry.
 
 ## Export and Handoff Artifacts
 
-Report export packages the property graph, workflow state, verified openCypher evidence, Neptune openCypher/Bulk Loader files, standalone snapshot, and RDF handoff files. RDF handoff includes `ontology.ttl`, `instances.ttl`, `ontology.jsonld`, `shapes.ttl`, `queries.sparql`, `rdf_mapping.md`, and `neptune_rdf_handoff.md`.
+Report export packages the property graph, workflow state, verified openCypher evidence, Neptune openCypher/Bulk Loader files, standalone snapshot, and RDF handoff files. RDF handoff includes `ontology.ttl`, `instances.ttl`, `ontology.jsonld`, `shapes.ttl`, `queries.sparql`, `rdf_mapping.md`, and `neptune_rdf_handoff.md`. When validation has been run, its latest evidence is also rendered as `validation_report.json` and `validation_report.md`.
 
-RDF/SHACL output is intentionally a handoff seed. Domain experts must validate URI policy, class/property semantics, named graph strategy, SPARQL behavior, SHACL constraints, and Neptune loading posture before production use.
+RDF/SHACL output is intentionally a handoff seed. Static validation does not execute SPARQL, run a standards-complete RDF parser, evaluate shapes with a SHACL engine, or claim OWL/data conformance. Domain experts must still validate URI policy, class/property semantics, named graph strategy, query behavior, SHACL policy, and Neptune loading posture before production use.
 
 ## Security Boundaries
 

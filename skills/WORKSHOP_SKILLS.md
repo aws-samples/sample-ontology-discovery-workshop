@@ -147,6 +147,7 @@ POST /workflow/answer
 POST /workflow/clarify
 POST /workflow/advance
 POST /workflow/review
+POST /workflow/validate
 GET  /workflow/next-question
 GET  /workflow/gates
 GET  /coverage
@@ -185,8 +186,11 @@ The RDF path is a handoff layer, not production reasoning. Use `POST /export/rdf
 - `queries.sparql`
 - `rdf_mapping.md`
 - `neptune_rdf_handoff.md`
+- `validation_report.json` and `validation_report.md` after an on-demand validation run
 
 Capture RDF decisions through `/rdf-decision`: base IRI, URI generation, class-vs-individual choices, label language, object/datatype property decisions, event node strategy, cardinality/required fields, and named graph strategy if needed.
+
+Run `POST /workflow/validate` only when the operator explicitly asks for a handoff check or at the Validation and Handoff stage. It performs one static artifact/SPARQL/SHACL structure check and retains only the latest result. If relevant inputs change afterward, report the result as `stale`; do not rerun it without the operator's choice. Do not poll, schedule, retry automatically, or claim that SPARQL was executed or a SHACL engine established conformance. If it fails, summarize the bounded finding and ask the operator to correct the evidence before choosing whether to rerun once.
 
 ## Evolution Loop
 

@@ -553,6 +553,35 @@ def ai_odlc_section(workflow: dict | None = None,
         ("status", "Status"), ("text", "Note"),
     ], limit=8)
 
+    validation = workflow.get("last_validation") or {}
+    if validation:
+        counts = validation.get("counts") or {}
+        freshness = validation.get("freshness", "unknown")
+        lines += [
+            "### Latest RDF Handoff Static Validation",
+            "",
+            f"- Scope: `{validation.get('scope', 'static_handoff_validation')}`",
+            f"- Status: **{str(validation.get('status', '-')).upper()}**",
+            f"- Validated at: {validation.get('validated_at', '-')}",
+            f"- Source freshness: **{freshness}**",
+            f"- Validated bundle: {validation.get('bundle_path', '-')}",
+            f"- Bundle digest: `{validation.get('bundle_digest', '-')}`",
+            (f"- Checks: {counts.get('passed', 0)} passed, "
+             f"{counts.get('warnings', 0)} warning(s), "
+             f"{counts.get('failed', 0)} failed"),
+            "- SPARQL executed: no",
+            "- SHACL engine conformance evaluated: no",
+            "",
+            "Limitations:",
+        ]
+        if freshness == "stale":
+            lines.append(
+                "- The model or RDF-relevant workflow evidence changed after this run; "
+                "do not treat the result as current handoff approval.")
+        for limitation in validation.get("limitations") or []:
+            lines.append(f"- {limitation}")
+        lines.append("")
+
     return "\n".join(lines).rstrip()
 
 
@@ -590,6 +619,28 @@ def rdf_handoff_section(workflow: dict | None = None,
             topic = item.get("topic") or "decision"
             value = item.get("value") or item.get("text") or "-"
             lines.append(f"- {topic}: {value}")
+    validation = (workflow or {}).get("last_validation") or {}
+    if validation:
+        counts = validation.get("counts") or {}
+        freshness = validation.get("freshness", "unknown")
+        lines += [
+            "", "### Validation Evidence Artifacts", "",
+            "| Artifact | Purpose |",
+            "| --- | --- |",
+            "| exports/report/rdf/validation_report.json | Latest on-demand static validation evidence |",
+            "| exports/report/rdf/validation_report.md | Human-readable static validation summary and limitations |",
+            "", "### Latest On-demand Validation", "",
+            f"- Status: {validation.get('status', '-')} ({validation.get('scope', '-')})",
+            f"- Source freshness: {freshness}",
+            f"- Validated bundle: {validation.get('bundle_path', '-')}",
+            (f"- Checks: {counts.get('passed', 0)} passed, "
+             f"{counts.get('warnings', 0)} warning(s), "
+             f"{counts.get('failed', 0)} failed"),
+            "- This was a single static handoff check; SPARQL execution and formal SHACL conformance were not performed.",
+        ]
+        if freshness == "stale":
+            lines.append(
+                "- This result predates relevant model/evidence changes and is not current handoff approval.")
     return "\n".join(lines)
 
 

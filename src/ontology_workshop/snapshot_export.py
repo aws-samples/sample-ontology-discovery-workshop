@@ -104,7 +104,8 @@ def build_static_viewer(g: OntologyGraph,
         '  var off=function(){alert(t("snapshotUnavailable"));};\n'
         '  window.resetGraph=window.exportReport=window.exportNeptune='
         'window.openSnapshot=window.downloadZip=window.submitWorkflowAnswer='
-        'window.advanceWorkflow=window.reviewWorkflow=window.refreshNextQuestion=off;\n'
+        'window.advanceWorkflow=window.reviewWorkflow=window.validateWorkflow='
+        'window.refreshNextQuestion=off;\n'
         '})();'
     )
     html = html.replace(_BOOTSTRAP_LINE, boot)
