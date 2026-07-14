@@ -14,25 +14,29 @@
 3. 顧客の質問を **openCypher で検証** — 「この答えは本当にグラフから導かれているんですね」
 4. オントロジードキュメント（Markdown、Obsidian 互換）を自動生成
 5. **Neptune エクスポート**（openCypher スクリプト + Bulk Loader CSV）
+6. **AI-ODLC ワークフロー**: 1-day AI-driven ontology discovery を claims, user stories, events, competency questions, data sources, mappings, validation query seeds, RDF decisions, risks, action items, gates として追跡
+7. **RDF/SHACL 引継成果物**: Turtle ontology/instances, JSON-LD, SHACL seed shapes, SPARQL seed queries, RDF mapping notes, Neptune RDF follow-up notes
 
 詳細な設計・セキュリティ制約・スコープは [`docs/DESIGN.md`](./docs/DESIGN.md) と
-[`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md) を、対話スキルは
+[`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md)、[`docs/AI_ODLC_WORKFLOW.md`](./docs/AI_ODLC_WORKFLOW.md) を、対話スキルは
 [`skills/WORKSHOP_SKILLS.md`](./skills/WORKSHOP_SKILLS.md) を参照してください。
 
 ### ワークショップ運用（M2）
 - **白紙から開始**: 左上の `⟲ 白紙` ボタン → 新しい顧客対話を最初から積み上げる
 - **編集モード**: サイドバーのエンティティ／関係チップをクリックすると削除（関連する関係も連鎖削除）。対話中の「模擬試験を追加したら？」のような変更がリアルタイムに反映される
-- **3 種類の成果物**: `📄 ワークショップ成果物 3 種を生成` ボタン → `exports/report/` に生成
+- **AI-ODLC Cockpit**: 右パネルで current stage, gates, next question, evidence count, detailed evidence cards を確認し、ユーザー回答やデータ構造を `/workflow/answer` に直接反映できる。
+- **敵対的レビュー**: cockpit のレビュー操作または `/workflow/review` により、現在の gates と evidence gaps から assumptions, risks, action items を生成する。
+- **RDF 引継**: `POST /export/rdf` または report export により、`exports/rdf/` または `exports/report/rdf/` に RDF/SHACL/SPARQL/Neptune RDF follow-up 成果物を生成する。
+- **ワークショップ引継成果物**: `📄 レポート` ボタン → `exports/report/` に生成
   1. ワークショップサマリー（エンティティ・関係・検証クエリ）
   2. AWS 構築アーキテクチャ提案（Neptune 規模の自動推定 + データフロー + コンプライアンス）
   3. データ準備状況（保有／未保有の分類、準備度 %）
   4. **技術ミーティング引継書** — 確定スキーマ、ロード用エクスポートの案内、データマッピングのアクション、検証ポイント、オープン課題
   - フォーマット: Markdown + HTML + PDF（weasyprint）+ docx（python-docx）
-  - 引継バンドル: 同じフォルダに `neptune.cypher` + `bulk/*.csv` も併せて生成 → 技術チームにフォルダごと引き渡し
+  - 引継バンドル: 同じフォルダに `neptune.cypher` + `bulk/*.csv` + `rdf/*` も併せて生成 → 技術チームにフォルダごと引き渡し
 
 ### クエリ実行対象
-現在は **Cytoscape** に対して実際の openCypher を実行し、結果を可視化します。リモート Neptune
-へのライブクエリは M3 予定（現時点ではエクスポートのみ）。
+現在はローカル Kùzu グラフに対して openCypher を実行し、Cytoscape で結果を可視化します。成功したクエリは workflow validation query seed に verification evidence として記録されます。リモート Neptune へのライブクエリはスコープ外で、現時点ではエクスポートと handoff note のみを提供します。
 
 ## クイックスタート
 
@@ -148,7 +152,7 @@ OntoForge は単一オペレーターのローカルワークショップツー�
 - 内部モデルは **プロパティグラフ単一**。T-Box/A-Box は UI 上で概念的に分離。
 - **OWL 推論はスコープ外** — 必要なら Cypher ルールで模倣し、本格的な推論は別トラック。
 - ローカル openCypher → Neptune は**ほぼ**互換（100% ではない）。ロード・チューニングは技術ミーティング段階で。
-- ワークショップは顧客のセキュリティ網内でローカル実行。外部通信は Claude API 呼び出しのみ。
+- ワークショップは顧客のセキュリティ網内でローカル実行。外部通信は任意で設定した Claude API 呼び出しのみで、キーを設定しなければオフライン抽出器で動作します。
 
 ## ライセンス
 本プロジェクトは Apache-2.0 ライセンスで提供されます。詳細は [`LICENSE`](./LICENSE) を参照してください。

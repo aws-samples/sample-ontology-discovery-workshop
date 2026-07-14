@@ -218,7 +218,7 @@ curl -s -X POST $BASE/narrate -H 'Content-Type: application/json' -d '{
 ### Export / Deliverables
 
 - `POST /export/neptune` - openCypher script and Bulk Loader CSV files under `exports/`.
-- `POST /export/rdf` - Turtle ontology/instances, JSON-LD, SHACL seed shapes, SPARQL seed queries, and RDF mapping notes under `exports/rdf`.
+- `POST /export/rdf` - Turtle ontology/instances, JSON-LD, SHACL seed shapes, SPARQL seed queries, RDF mapping notes, and Neptune RDF handoff notes under `exports/rdf`.
 - `POST /export/report {"title":"...","lang":"ko|en|ja","descriptions":{...},"data_status":{...},"action_items":{...}}` - report, handoff, standalone snapshot HTML, and restore JSON.
 - `POST /import` - restore a workshop from `workshop_snapshot.json`.
 - `GET /files/workshop_report.html`
@@ -280,7 +280,7 @@ Use `/workflow/state`, `/workflow/gates`, and `/coverage` to keep the browser AI
 - Model Synthesis: create graph model candidates through `/model-candidate`, then apply accepted T-Box/A-Box objects through `/entity`, `/relation`, `/instance`, and `/edge`.
 - Data Grounding: map source systems, tables, files, APIs, logs, and event streams through `/data-source` and `/mapping`.
 - Adversarial Review: record assumptions, risks, contradictions, missing evidence, and action items through `/workflow/review`.
-- Validation and Handoff: run `/query`, narrate evidence as `qa`, verify `/coverage`, then export report/snapshot/Neptune artifacts.
+- Validation and Handoff: run `/query` so validation query seeds receive verification evidence, narrate evidence as `qa`, verify `/coverage`, then export report/snapshot/Neptune/RDF artifacts.
 
 ### A. Ontology Modeling
 
@@ -363,7 +363,7 @@ Export:
 
 - Run `POST /export/report` with localized `descriptions`, `data_status`, and `action_items`.
 - Run `POST /export/neptune`.
-- Tell the operator where to find report, snapshot, ZIP, and Neptune artifacts.
+- Tell the operator where to find report, snapshot, ZIP, Neptune artifacts, and RDF/SHACL handoff artifacts.
 
 ## 6. Operating Principles
 

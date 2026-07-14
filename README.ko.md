@@ -14,25 +14,29 @@
 3. 고객 질문을 **openCypher로 검증** — "이 답이 진짜 그래프에서 나오네요"
 4. 온톨로지 문서(Markdown, Obsidian 호환) 자동 생성
 5. **Neptune 익스포트** (openCypher 스크립트 + Bulk Loader CSV)
+6. **AI-ODLC 워크플로우**: 1-day AI 주도 온톨로지 디스커버리를 claims, user stories, events, competency questions, data sources, mappings, validation query seeds, RDF decisions, risks, action items, gates로 추적
+7. **RDF/SHACL 인계 산출물**: Turtle ontology/instances, JSON-LD, SHACL seed shapes, SPARQL seed queries, RDF mapping notes, Neptune RDF follow-up notes
 
 자세한 설계·보안 제약·범위는 [`docs/DESIGN.md`](./docs/DESIGN.md)와
-[`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md), 대화 스킬은
+[`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md), [`docs/AI_ODLC_WORKFLOW.md`](./docs/AI_ODLC_WORKFLOW.md), 대화 스킬은
 [`skills/WORKSHOP_SKILLS.md`](./skills/WORKSHOP_SKILLS.md) 참조.
 
 ### 워크샵 운영 (M2)
 - **백지 시작**: 좌측 상단 `⟲ 백지` 버튼 → 새 고객 대화를 처음부터 쌓기
 - **변경 모드**: 사이드바의 엔티티/관계 칩을 클릭하면 삭제(관련 관계 연쇄 삭제). 대화 중 "모의고사 추가하면?" 같은 변경이 실시간 반영
-- **산출물 3종**: `📄 워크샵 산출물 3종 생성` 버튼 → `exports/report/`에 생성
+- **AI-ODLC Cockpit**: 우측 패널에서 현재 stage, gate, next question, evidence count, detailed evidence cards를 보고, 사용자 답변/데이터 구조를 직접 입력해 `/workflow/answer`로 반영할 수 있다.
+- **적대적 리뷰**: cockpit의 리뷰 버튼 또는 `/workflow/review`로 현재 gate와 evidence gap을 기반으로 assumptions, risks, action items를 생성한다.
+- **RDF 인계**: `POST /export/rdf` 또는 report export로 `exports/rdf/` 또는 `exports/report/rdf/`에 RDF/SHACL/SPARQL/Neptune RDF follow-up 산출물을 생성한다.
+- **워크샵 인계 산출물**: `📄 보고서` 버튼 → `exports/report/`에 생성
   1. 워크샵 서머리 (엔티티·관계·검증 질의)
   2. AWS 구축 아키텍처 제안 (Neptune 규모 자동 추정 + 데이터 흐름 + 컴플라이언스)
   3. 데이터 준비 상태 (보유/미보유 분류, 준비도 %)
   4. **기술 미팅 인계서** — 확정 스키마, 적재용 익스포트 안내, 데이터 매핑 액션, 검증 포인트, 오픈 이슈
   - 포맷: Markdown + HTML + PDF(weasyprint) + docx(python-docx)
-  - 인계 번들: 같은 폴더에 `neptune.cypher` + `bulk/*.csv`도 함께 생성 → 기술팀에 폴더째 전달
+  - 인계 번들: 같은 폴더에 `neptune.cypher` + `bulk/*.csv` + `rdf/*`도 함께 생성 → 기술팀에 폴더째 전달
 
 ### 질의 실행 대상
-현재 **Cytoscape**에 실제 openCypher를 실행해 결과를 시각화한다. 리모트 Neptune
-라이브 쿼리는 M3 예정(현재는 익스포트만).
+현재 로컬 Kùzu 그래프에 openCypher를 실행하고 Cytoscape에서 결과를 시각화한다. 성공한 질의는 workflow validation query seed에 검증 evidence로 기록된다. 리모트 Neptune 라이브 쿼리는 범위 밖이며 현재는 익스포트와 handoff note만 제공한다.
 
 ## 빠른 시작
 
@@ -147,7 +151,7 @@ OntoForge는 단일 운영자 로컬 워크샵 도구다. 고객 민감정보를
 - 내부 모델은 **property graph 단일**. T-Box/A-Box는 UI에서 개념 분리.
 - **OWL 추론은 범위 밖** — 필요 시 Cypher 규칙으로 흉내, 진짜 추론은 별도 트랙.
 - 로컬 openCypher → Neptune은 **대부분** 호환(100% 아님). 적재·튜닝은 기술 미팅 단계.
-- 워크샵은 고객 보안망 내 로컬 실행. 외부 통신은 Claude API 호출뿐.
+- 워크샵은 고객 보안망 내 로컬 실행. 외부 통신은 선택적으로 설정한 Claude API 호출뿐이며, 키를 설정하지 않으면 오프라인 추출기로 동작한다.
 
 ## 라이선스
 이 프로젝트는 Apache-2.0 라이선스로 제공된다. 자세한 내용은 [`LICENSE`](./LICENSE)를 참조한다.

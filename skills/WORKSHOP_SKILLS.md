@@ -2,6 +2,8 @@
 
 The conversation layer receives customer answers, runs the skills below in stages, and applies each JSON result to OntoForge through REST endpoints. Each skill returns **JSON only**: no preamble, no Markdown.
 
+AI-ODLC v2 is the top-level workshop lifecycle. The skill outputs below still help populate the graph, but every customer answer should also be recorded as workflow evidence so the cockpit, report, snapshot, RDF handoff, and gate checks stay aligned.
+
 ## Language Rule
 
 This specification is written in English. Runtime output follows the selected workshop language:
@@ -40,6 +42,7 @@ Prompt instruction: separate domain concepts (entity types) from candidate insta
 ```
 
 Apply through `POST /entity` for each type and `POST /instance` for each instance.
+Also add candidate model evidence through `POST /model-candidate` or include structured objects in `POST /workflow/answer` when the entity was inferred from conversation rather than confirmed.
 
 ## 2. `define_relations`
 
@@ -106,7 +109,7 @@ Input: natural-language question. Output: openCypher.
 }
 ```
 
-Apply through `POST /query`. Include the original `question` to receive evidence text.
+Apply through `POST /query`. Include the original `question` to receive evidence text. When the query matches a workflow validation query seed, OntoForge records verification evidence and updates query readiness.
 
 ## 6. `map_data_sources`
 
@@ -131,7 +134,60 @@ Input: confirmed T-Box. Output: data availability and source mapping.
 ```
 
 Include this in the handoff Markdown/report.
+Map concrete sources through `POST /data-source` and `POST /mapping`. Missing, unknown, and partial mappings should become action items or risks during adversarial review.
+
+## 7. AI-ODLC Workflow Evidence
+
+Use these endpoints during the workshop loop:
+
+```text
+POST /workflow/start
+GET  /workflow/state
+POST /workflow/answer
+POST /workflow/clarify
+POST /workflow/advance
+POST /workflow/review
+GET  /workflow/next-question
+GET  /workflow/gates
+GET  /coverage
+
+POST /claim
+POST /story
+POST /event
+POST /question
+POST /model-candidate
+POST /data-source
+POST /mapping
+POST /validation-query
+POST /rdf-decision
+```
+
+`POST /workflow/answer` accepts natural language or JSON. It stores the answer as a claim, extracts conservative workflow objects, updates gates, generates validation query seeds when enough model context exists, and pushes workflow state to the browser. Treat extracted objects as candidate evidence until the operator/customer confirms them.
+
+Recommended answer payload shape:
+
+```json
+{
+  "stage": "inception",
+  "role": "customer",
+  "text": "{\"user_story\":{\"actor\":\"Quality manager\",\"goal\":\"Trace defects faster\",\"decision\":\"Identify affected lots\",\"success_metric\":\"Reduce RCA time\"},\"competency_questions\":[{\"question\":\"Which Product instances are connected to SupplierLot instances?\",\"expected_answer_shape\":[\"Product\",\"SupplierLot\"]}],\"tables\":[{\"name\":\"quality_inspection\",\"fields\":{\"product_id\":\"STRING\",\"supplier_lot_id\":\"STRING\"}}],\"rdf_decisions\":[{\"topic\":\"base_iri\",\"value\":\"https://example.com/quality/\"}]}"
+}
+```
+
+## 8. RDF and Neptune RDF Handoff
+
+The RDF path is a handoff layer, not production reasoning. Use `POST /export/rdf` or report export to create:
+
+- `ontology.ttl`
+- `instances.ttl`
+- `ontology.jsonld`
+- `shapes.ttl`
+- `queries.sparql`
+- `rdf_mapping.md`
+- `neptune_rdf_handoff.md`
+
+Capture RDF decisions through `/rdf-decision`: base IRI, URI generation, class-vs-individual choices, label language, object/datatype property decisions, event node strategy, cardinality/required fields, and named graph strategy if needed.
 
 ## Evolution Loop
 
-When the T-Box changes during conversation, rerun skills 1 and 2 so the graph, documentation, visualization, and Neptune export stay synchronized.
+When the T-Box changes during conversation, rerun skills 1 and 2 so the graph, documentation, visualization, AI-ODLC workflow evidence, Neptune export, and RDF handoff stay synchronized.

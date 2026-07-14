@@ -7,8 +7,10 @@ rectangle "Local workstation" {
   component "FastAPI server\nontology_workshop.server" as API
   database "Kuzu embedded graph\nworkshop.kuzu" as Kuzu
   component "Skill engine\nClaude API or offline rules" as Skills
+  component "AI-ODLC workflow state\nclaims, gates, evidence" as Workflow
   component "Report/export pipeline" as Export
-  folder "exports/\nreports, snapshots, CSV" as Files
+  component "RDF/SHACL exporter\nTTL, JSON-LD, SPARQL" as RDF
+  folder "exports/\nreports, snapshots, CSV, RDF" as Files
 }
 cloud "Anthropic Claude API\noptional external call" as Claude
 cloud "Amazon Neptune target\nfuture deployment" as Neptune
@@ -19,9 +21,13 @@ API --> Kuzu : validated openCypher\nread-only user queries
 API --> Browser : WebSocket graph updates\noptional token auth
 Browser --> API : local HTTPS/HTTP\nstatic UI + commands
 API --> Skills : /skill execution
+API --> Workflow : /workflow/*\nclaims, stories, mappings, reviews
+Workflow --> API : gates, next question,\nquery evidence
 Skills --> Claude : HTTPS only\nANTHROPIC_API_KEY
 API --> Export : report / snapshot / Neptune export
+API --> RDF : /export/rdf\nRDF handoff bundle
 Export --> Files : constrained to ./exports\n0600 permissions
+RDF --> Files : ontology.ttl, shapes.ttl,\nqueries.sparql, handoff notes
 Files --> S3 : operator upload\nSSE-KMS + HTTPS-only
 S3 --> Neptune : Bulk Loader IAM role
 
