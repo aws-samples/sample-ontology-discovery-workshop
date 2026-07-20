@@ -22,13 +22,45 @@
 [`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md), [`docs/AI_ODLC_WORKFLOW.md`](./docs/AI_ODLC_WORKFLOW.md), 대화 스킬은
 [`skills/WORKSHOP_SKILLS.md`](./skills/WORKSHOP_SKILLS.md) 참조.
 
+## 에이전트 플러그인 Marketplace
+
+이 저장소 자체가 `ontoforge-workshop` 플러그인의 marketplace다. marketplace
+파일이 포함된 브랜치를 checkout한 후 저장소 루트에서 설치한다.
+
+```bash
+# Codex와 Claude Code를 함께 설치
+./scripts/install-agent-plugins.sh
+
+# 하나씩 설치할 경우
+./scripts/install-codex-plugin.sh
+./scripts/install-claude-plugin.sh
+```
+
+marketplace 파일이 GitHub에 배포된 이후에는 저장소를 clone하지 않고도 설치할 수 있다.
+
+```bash
+# Codex
+codex plugin marketplace add aws-samples/sample-ontology-discovery-workshop --ref v2
+codex plugin add ontoforge-workshop@ontoforge
+
+# Claude Code
+claude plugin marketplace add aws-samples/sample-ontology-discovery-workshop@v2 --scope user
+claude plugin install ontoforge-workshop@ontoforge --scope user
+```
+
+설치 후에는 새 세션을 시작한다. Codex에서는 `$run-workshop`, Claude Code에서는
+`/ontoforge-workshop:start`를 실행한다. 플러그인은 OntoForge 저장소 checkout 안에서
+사용하는 워크플로우이며 Python 애플리케이션 자체를 설치하지는 않는다.
+
 ### 워크샵 운영 (M2)
 - **백지 시작**: 좌측 상단 `⟲ 백지` 버튼 → 새 고객 대화를 처음부터 쌓기
 - **변경 모드**: 사이드바의 엔티티/관계 칩을 클릭하면 삭제(관련 관계 연쇄 삭제). 대화 중 "모의고사 추가하면?" 같은 변경이 실시간 반영
-- **AI-ODLC Cockpit**: 우측 패널에서 현재 stage, gate, next question, evidence count, detailed evidence cards를 보고, 사용자 답변/데이터 구조를 직접 입력해 `/workflow/answer`로 반영할 수 있다.
-- **적대적 리뷰**: cockpit의 리뷰 버튼 또는 `/workflow/review`로 현재 gate와 evidence gap을 기반으로 assumptions, risks, action items를 생성한다.
+- **AI-ODLC 브라우저 Cockpit**: Stories, Events, Questions, Model, Data, Review, Actions 패널과 조건별 gate 실패를 확인하고, 현재 단계 답변 입력과 claim/finding의 확정·기각·수정·해결을 수행한다. 단계 이동은 다음 단계만 허용하고 강제 진행에는 감사 사유가 필요하다.
+- **터미널 Cockpit**: Textual TUI에서도 같은 서버 gate를 사용해 7개 evidence 패널, gate 상세, 답변/진행/강제 진행, review decision, 명시적 RDF 정적 인계 검증을 수행한다.
+- **적대적 리뷰**: cockpit의 리뷰 버튼 또는 `/workflow/review`로 모호성, 충돌, 근거 없는 인과, 이벤트 모델링, 과도한 모델링, 민감정보 위험을 1회 점검한다. 자동 생성된 항목만으로 리뷰 gate가 통과하지 않으며 high 위험 수용에는 담당자가 있는 액션이 필요하다.
 - **RDF 인계**: `POST /export/rdf` 또는 report export로 `exports/rdf/` 또는 `exports/report/rdf/`에 RDF/SHACL/SPARQL/Neptune RDF follow-up 산출물을 생성한다.
 - **제한된 검증 루프**: cockpit 버튼 또는 `POST /workflow/validate`로 RDF/SPARQL/SHACL 인계 산출물을 사용자가 원할 때 1회 정적 검증한다. 최신 결과 1건만 보존하며 자동 폴링·재시도는 하지 않는다.
+- **최종 단계 증명**: 최종 인계 승인은 인접 단계 전이 이력 전체를 거쳐 `validation_handoff`에 도달해야 한다. 최종 형태의 증거나 최종 stage 라벨만 직접 주입해도 완료되지 않으며, 강제 다음 단계 이동은 감사 사유가 있을 때만 가능하다.
 - **워크샵 인계 산출물**: `📄 보고서` 버튼 → `exports/report/`에 생성
   1. 워크샵 서머리 (엔티티·관계·검증 질의)
   2. AWS 구축 아키텍처 제안 (Neptune 규모 자동 추정 + 데이터 흐름 + 컴플라이언스)
@@ -40,7 +72,11 @@
 ### 질의 실행 대상
 현재 로컬 Kùzu 그래프에 openCypher를 실행하고 Cytoscape에서 결과를 시각화한다. 성공한 질의는 workflow validation query seed에 검증 evidence로 기록된다. 리모트 Neptune 라이브 쿼리는 범위 밖이며 현재는 익스포트와 handoff note만 제공한다.
 
+워크플로우 인계 증거는 질문과 정규화된 openCypher가 저장된 high-priority competency-query seed와 모두 일치하고, expected answer shape의 각 라벨에 MATCH로 바인딩된 변수를 하나의 연결된 관계 패턴에서 반환하며, 실행 당시 query-evidence 지문이 현재 상태와 같은 경우에만 인정한다. query 지문은 RDF 정적 검증 지문 및 handoff package 지문과 분리되어 한 종류의 증거가 다른 종류의 최신성을 대신하지 않는다. 임의의 성공 질의, 서로 끊긴 Cartesian MATCH, 변경 전 모델의 질의 증거는 인계 gate를 열지 않는다.
+
 `POST /workflow/validate`는 필수 RDF 산출물, JSON-LD 구조, 읽기 전용 SPARQL seed 구문, SHACL과 T-Box의 구조적 정합성만 확인한다. SPARQL을 실행하거나 정식 SHACL conformance를 판정하지 않는다. 결과는 `validation_report.json`과 `validation_report.md`에 기록되고, 이후 관련 입력이 바뀌면 재실행 없이 최신 결과를 `stale`로 표시한다. 스케줄러·폴링·백그라운드 작업·자동 재시도는 없다.
+
+검증을 실행했다면 최종 package manifest의 RDF 입력 지문과 검증 당시 지문도 같아야 한다. 따라서 package 생성 시 base IRI를 바꾸면 이전 pass는 해당 bundle을 승인하지 않는다.
 
 ## 빠른 시작
 
@@ -68,6 +104,16 @@ PYTHONPATH=src python src/seed_demo.py
 PYTHONPATH=src uvicorn ontology_workshop.server:app --reload
 # 브라우저에서 http://localhost:8000
 ```
+
+다른 터미널에서 선택형 terminal cockpit을 실행할 수 있다.
+
+```bash
+PYTHONPATH=src python -m ontology_workshop.tui --url http://127.0.0.1:8000
+```
+
+인증이 필요하면 `ONTOFORGE_TOKEN`을 설정하거나 `--token`을 전달한다. TUI는
+live update용 WebSocket 연결 1개와 명시적인 Refresh만 사용하며 polling, 자동
+재연결, review/validation 자동 재실행을 하지 않는다.
 
 ### 유지/복원
 워크샵 데이터는 기본적으로 `workshop.kuzu`에 저장됩니다. 기존 워크샵을 이어서 불러오려면 `ONTOFORGE_FRESH=1` 없이 서버를 다시 시작하세요.

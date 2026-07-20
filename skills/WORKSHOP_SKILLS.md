@@ -150,6 +150,8 @@ POST /workflow/review
 POST /workflow/validate
 GET  /workflow/next-question
 GET  /workflow/gates
+GET  /workflow/items/{collection}
+POST /workflow/items/{collection}/{item_id}/decision
 GET  /coverage
 
 POST /claim
@@ -161,9 +163,37 @@ POST /data-source
 POST /mapping
 POST /validation-query
 POST /rdf-decision
+POST /assumption
+POST /contradiction
+POST /finding
+POST /risk
+POST /action
 ```
 
-`POST /workflow/answer` accepts natural language or JSON. It stores the answer as a claim, extracts conservative workflow objects, updates gates, generates validation query seeds when enough model context exists, and pushes workflow state to the browser. Treat extracted objects as candidate evidence until the operator/customer confirms them.
+`POST /workflow/answer` accepts natural language or JSON only for the current stage.
+It stores the answer as a claim, extracts conservative workflow objects, updates gates,
+generates validation query seeds when enough model context exists, and pushes workflow
+state to browser and terminal clients. Do not label an answer with a different stage: advance through
+`POST /workflow/advance` first. Advancement permits only the immediate next stage.
+Forced advancement requires a meaningful `reason`; never invent one for the operator.
+
+The optional Textual client is a thin API surface, not a second workflow engine:
+`PYTHONPATH=src python -m ontology_workshop.tui --url http://127.0.0.1:8000`.
+It uses one WebSocket connection plus explicit Refresh and must not add polling,
+automatic reconnection, review reruns, or validation retries.
+
+Treat extracted objects as candidate evidence until the operator/customer confirms
+them. Use the item decision endpoint for confirm, accept, reject, revise, resolve, or
+start, and retain a meaningful decision note for every action. Accepting a high-severity
+review item requires a linked action with an owner.
+Use explicit update/merge decisions for competing non-empty values; do not overwrite
+or hide `merge_conflicts`.
+
+At Model Synthesis, link each answer-shape model candidate to the high-priority
+competency question it serves via `question_id` or `question_ids`. If a question has
+two or more answer-shape elements, also link a relation candidate whose source and
+target are linked entity candidates for that question. A global pool of matching model
+names is not a question-specific graph pattern and must not be treated as gate evidence.
 
 Recommended answer payload shape:
 
@@ -171,9 +201,25 @@ Recommended answer payload shape:
 {
   "stage": "inception",
   "role": "customer",
-  "text": "{\"user_story\":{\"actor\":\"Quality manager\",\"goal\":\"Trace defects faster\",\"decision\":\"Identify affected lots\",\"success_metric\":\"Reduce RCA time\"},\"competency_questions\":[{\"question\":\"Which Product instances are connected to SupplierLot instances?\",\"expected_answer_shape\":[\"Product\",\"SupplierLot\"]}],\"tables\":[{\"name\":\"quality_inspection\",\"fields\":{\"product_id\":\"STRING\",\"supplier_lot_id\":\"STRING\"}}],\"rdf_decisions\":[{\"topic\":\"base_iri\",\"value\":\"https://example.com/quality/\"}]}"
+  "text": "{\"user_story\":{\"actor\":\"Quality manager\",\"goal\":\"Trace defects faster\",\"decision\":\"Identify affected lots\",\"success_metric\":\"Reduce RCA time\",\"scope\":\"One traceability scenario in the one-day workshop\"}}"
 }
 ```
+
+Run `/workflow/review` once after material story, event, model, and data evidence
+exists. The bounded review checks ambiguity, contradictions, unsupported causality,
+event-vs-edge choices, duplicate/over-modeled concepts, and sensitive-data handling.
+It becomes stale when material evidence or graph structure changes. Do not treat an
+auto-generated finding as user acceptance or rerun the review automatically.
+
+For handoff, execute the exact openCypher seed linked to every high-priority competency
+question. It must return MATCH-bound variables for the complete expected answer shape
+in one connected relationship pattern; aliases, comments, strings, disconnected
+Cartesian matches, or `RETURN 1` do not establish relevance. Rerun it after relevant
+query/model/data changes make its query-evidence fingerprint stale. That fingerprint is
+separate from RDF-validation and handoff-package fingerprints. An arbitrary successful
+query does not count. Static RDF validation is a
+separate structural check: `warning`, stale, and empty-model results do not qualify as
+handoff approval, and even `pass` does not mean SPARQL execution or SHACL conformance.
 
 ## 8. RDF and Neptune RDF Handoff
 

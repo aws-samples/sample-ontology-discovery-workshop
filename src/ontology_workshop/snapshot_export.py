@@ -105,7 +105,8 @@ def build_static_viewer(g: OntologyGraph,
         '  window.resetGraph=window.exportReport=window.exportNeptune='
         'window.openSnapshot=window.downloadZip=window.submitWorkflowAnswer='
         'window.advanceWorkflow=window.reviewWorkflow=window.validateWorkflow='
-        'window.refreshNextQuestion=off;\n'
+        'window.refreshNextQuestion=window.submitDecision=window.confirmForceAdvance=off;\n'
+        '  document.querySelectorAll(".odlc-card-actions,.odlc-actions").forEach(function(el){el.style.display="none";});\n'
         '})();'
     )
     html = html.replace(_BOOTSTRAP_LINE, boot)

@@ -8,7 +8,6 @@ from __future__ import annotations
 import asyncio
 import datetime as _dt
 import hmac
-import io
 import json
 import logging
 import os
@@ -32,7 +31,10 @@ from . import report_export as rx
 from . import snapshot_export as sx
 from . import rdf_export as rdfx
 from . import rdf_validation as rdfv
-from .workflow import WorkflowState, STAGES, STAGE_LABELS
+from .workflow import (
+    WorkflowState, STAGES, STAGE_LABELS, WORKFLOW_COLLECTIONS,
+    REQUIRED_HANDOFF_ARTIFACTS,
+)
 from .security import audit_log, safe_export_path
 
 DB_PATH = os.environ.get("ONTOFORGE_DB", "./workshop.kuzu")
@@ -83,6 +85,28 @@ def _json(content: dict, status_code: int = 200) -> JSONResponse:
 def _workflow_context() -> dict:
     tb = g.tbox()
     snap = g.snapshot()
+    validation_base_iri = (
+        workflow.data.get("last_validation") or {}).get("base_iri")
+    validation_source_fingerprint = rdfv.source_fingerprint(
+        tb, snap, workflow.data,
+        validation_base_iri)
+    report_state = globals().get("last_report") or {}
+    handoff_base_iri = (
+        report_state.get("rdf_base_iri") or validation_base_iri
+        or rdfx.DEFAULT_BASE_IRI)
+    handoff_rdf_source_fingerprint = rdfv.source_fingerprint(
+        tb, snap, workflow.data, handoff_base_iri)
+    manifest = workflow.data.get("handoff_manifest") or {}
+    artifact_paths = (manifest.get("artifacts") or {}).values()
+    manifest_files_valid = bool(artifact_paths)
+    for path in artifact_paths:
+        try:
+            checked = safe_export_path(str(path))
+            manifest_files_valid = (
+                manifest_files_valid and os.path.isfile(checked)
+                and os.path.getsize(checked) > 0)
+        except (OSError, ValueError):
+            manifest_files_valid = False
     return {
         "graph": {
             "entities": len(tb.get("entities", {})),
@@ -92,15 +116,25 @@ def _workflow_context() -> dict:
         },
         "entity_names": list(tb.get("entities", {}).keys()),
         "relation_names": list(tb.get("relations", {}).keys()),
+        "tbox": tb,
         "verified_count": len(verified_queries),
-        "rdf_validation_source_fingerprint": rdfv.source_fingerprint(
-            tb, snap, workflow.data,
-            (workflow.data.get("last_validation") or {}).get("base_iri")),
+        "rdf_validation_source_fingerprint": validation_source_fingerprint,
+        "handoff_rdf_source_fingerprint": handoff_rdf_source_fingerprint,
+        "handoff_rdf_base_iri": handoff_base_iri,
+        "query_source_fingerprint": workflow.query_source_fingerprint(tb, snap),
+        "handoff_source_fingerprint": workflow.handoff_source_fingerprint(
+            handoff_rdf_source_fingerprint),
+        "handoff_manifest_files_valid": manifest_files_valid,
     }
 
 
 def _workflow_payload() -> dict:
     return workflow.to_dict(_workflow_context())
+
+
+def _current_verified_queries() -> list[dict]:
+    """Current handoff/report evidence; legacy query history is not authoritative."""
+    return workflow.current_query_evidence(_workflow_context())
 
 
 def _graph_payload() -> dict:
@@ -186,7 +220,7 @@ def _restore_session_on_start() -> None:
 def _autosave_session() -> None:
     try:
         path = sx.export_snapshot_json(
-            g, SESSION_PATH, narrations, verified_queries,
+            g, SESSION_PATH, narrations, _current_verified_queries(),
             last_report.get("title") or "OntoForge autosave",
             _workflow_payload())
         audit_log("session_autosaved", path=path)
@@ -397,17 +431,20 @@ class WorkflowAnswerIn(BaseModel):
 class WorkflowAdvanceIn(BaseModel):
     stage: str | None = None
     force: bool = False
+    reason: str | None = None
+    actor: str = "operator"
 
 
 class WorkflowReviewIn(BaseModel):
     findings: list[dict] = []
     assumptions: list[dict] = []
+    contradictions: list[dict] = []
     risks: list[dict] = []
     action_items: list[dict] = []
 
 
 class WorkflowValidateIn(BaseModel):
-    outdir: str = "./exports/validation"
+    outdir: str = "./exports/report/validation"
     base_iri: str | None = None
 
 
@@ -421,6 +458,17 @@ class WorkflowItemIn(BaseModel):
     stage: str | None = None
 
 
+class WorkflowItemDecisionIn(BaseModel):
+    action: Literal[
+        "confirm", "accept", "reject", "revise", "resolve", "start",
+        "update", "merge",
+    ]
+    changes: dict = {}
+    linked_action: dict | None = None
+    note: str | None = None
+    actor: str = "operator"
+
+
 def _workflow_item(body: WorkflowItemIn) -> dict:
     return body.model_dump(exclude_none=True)
 
@@ -430,6 +478,7 @@ def _review_summary(added: dict[str, list[dict]]) -> str:
     labels = {
         "review_findings": "findings",
         "assumptions": "assumptions",
+        "contradictions": "contradictions",
         "risks": "risks",
         "action_items": "actions",
     }
@@ -438,6 +487,61 @@ def _review_summary(added: dict[str, list[dict]]) -> str:
         if count:
             parts.append(f"{count} {label}")
     return "Adversarial review recorded: " + (", ".join(parts) if parts else "no new findings")
+
+
+def _report_urls(reports: dict[str, str]) -> dict[str, str]:
+    root = os.path.realpath(REPORT_DIR)
+    urls = {}
+    for key, path in (reports or {}).items():
+        resolved = os.path.realpath(path)
+        try:
+            relative = os.path.relpath(resolved, root)
+            if relative == ".." or relative.startswith(".." + os.sep):
+                continue
+        except ValueError:
+            continue
+        urls[key] = "/files/" + relative.replace(os.sep, "/")
+    return urls
+
+
+def _handoff_artifacts(result: dict) -> dict[str, str]:
+    bulk = result.get("neptune_bulk") or {}
+    rdf = result.get("rdf") or {}
+    paths = {
+        "report_markdown": result.get("markdown"),
+        "report_html": result.get("html"),
+        "snapshot_html": result.get("snapshot_viewer"),
+        "snapshot_json": result.get("snapshot_json"),
+        "neptune_cypher": result.get("neptune_cypher"),
+        "neptune_nodes": bulk.get("nodes") if isinstance(bulk, dict) else None,
+        "neptune_edges": bulk.get("edges") if isinstance(bulk, dict) else None,
+        "rdf_ontology": rdf.get("ontology_ttl") if isinstance(rdf, dict) else None,
+        "rdf_instances": rdf.get("instances_ttl") if isinstance(rdf, dict) else None,
+        "rdf_jsonld": rdf.get("jsonld") if isinstance(rdf, dict) else None,
+        "rdf_shacl": rdf.get("shacl") if isinstance(rdf, dict) else None,
+        "rdf_sparql": rdf.get("sparql") if isinstance(rdf, dict) else None,
+        "rdf_mapping": rdf.get("mapping") if isinstance(rdf, dict) else None,
+        "rdf_neptune_handoff": (
+            rdf.get("neptune_rdf_handoff") if isinstance(rdf, dict) else None),
+        "workshop_zip": result.get("workshop_zip"),
+    }
+    return {
+        key: str(path) for key, path in paths.items()
+        if path and os.path.isfile(str(path)) and os.path.getsize(str(path)) > 0
+    }
+
+
+def _write_workshop_zip() -> str:
+    path = safe_export_path(os.path.join(REPORT_DIR, "workshop_bundle.zip"))
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for root, _dirs, files in os.walk(REPORT_DIR):
+            for filename in files:
+                full = os.path.join(root, filename)
+                if os.path.realpath(full) == os.path.realpath(path) or filename.startswith("~$"):
+                    continue
+                archive.write(full, os.path.relpath(full, REPORT_DIR))
+    os.chmod(path, 0o600)
+    return path
 
 
 async def _save_and_broadcast_workflow(event: str, **fields):
@@ -453,17 +557,22 @@ async def workflow_state():
 
 @app.post("/workflow/start")
 async def workflow_start(body: WorkflowStartIn):
-    state = workflow.start(body.language, body.scope, body.reset)
+    workflow.start(body.language, body.scope, body.reset)
     await _save_and_broadcast_workflow(
         "workflow_started", language=body.language, reset=body.reset)
-    return {"ok": True, "workflow": state, "stages": STAGES}
+    return {"ok": True, "workflow": _workflow_payload(), "stages": STAGES}
 
 
 @app.post("/workflow/answer")
 async def workflow_answer(body: WorkflowAnswerIn):
-    result = workflow.process_answer(
-        body.text, body.stage, body.role, body.status, body.source,
-        body.extracted, _workflow_context())
+    try:
+        result = workflow.process_answer(
+            body.text, body.stage, body.role, body.status, body.source,
+            body.extracted, _workflow_context())
+    except ValueError as e:
+        audit_log("workflow_answer_rejected", requested_stage=body.stage,
+                  current_stage=workflow.data.get("current_stage"), error=str(e))
+        return _json({"ok": False, "error": str(e)}, status_code=400)
     item = result["claim"]
     await _append_narration(
         "chat", STAGE_LABELS.get(item.get("stage"), item.get("stage", "AI-ODLC")),
@@ -481,9 +590,14 @@ async def workflow_answer(body: WorkflowAnswerIn):
 
 @app.post("/workflow/clarify")
 async def workflow_clarify(body: WorkflowAnswerIn):
-    result = workflow.process_answer(
-        body.text, body.stage, body.role, body.status,
-        "workflow_clarification", body.extracted, _workflow_context())
+    try:
+        result = workflow.process_answer(
+            body.text, body.stage, body.role, body.status,
+            "workflow_clarification", body.extracted, _workflow_context())
+    except ValueError as e:
+        audit_log("workflow_clarification_rejected", requested_stage=body.stage,
+                  current_stage=workflow.data.get("current_stage"), error=str(e))
+        return _json({"ok": False, "error": str(e)}, status_code=400)
     item = result["claim"]
     await _append_narration(
         "chat", "Clarification", body.text, body.role,
@@ -497,20 +611,30 @@ async def workflow_clarify(body: WorkflowAnswerIn):
 @app.post("/workflow/advance")
 async def workflow_advance(body: WorkflowAdvanceIn):
     try:
-        result = workflow.advance(body.stage, body.force, _workflow_context())
+        result = workflow.advance(
+            body.stage, body.force, _workflow_context(), body.reason, body.actor)
     except ValueError as e:
+        audit_log("workflow_advance_rejected", requested_stage=body.stage,
+                  current_stage=workflow.data.get("current_stage"),
+                  force=body.force, actor=body.actor, error=str(e))
         return _json({"ok": False, "error": str(e)}, status_code=400)
     if result.get("ok"):
+        transition = result.get("transition") or {}
         await _save_and_broadcast_workflow(
-            "workflow_advanced", stage=result.get("stage"), force=body.force)
+            "workflow_advanced", stage=result.get("stage"), force=body.force,
+            reason=transition.get("reason"), actor=transition.get("actor"),
+            bypassed_gates=transition.get("bypassed_gates"))
     return _json(result)
 
 
 @app.post("/workflow/review")
 async def workflow_review(body: WorkflowReviewIn):
-    if body.findings or body.assumptions or body.risks or body.action_items:
+    if (body.findings or body.assumptions or body.contradictions
+            or body.risks or body.action_items):
         added = workflow.add_review(
-            body.findings, body.assumptions, body.risks, body.action_items)
+            findings=body.findings, assumptions=body.assumptions,
+            contradictions=body.contradictions, risks=body.risks,
+            action_items=body.action_items)
     else:
         added = workflow.generate_review(_workflow_context())
     await _append_narration(
@@ -520,9 +644,43 @@ async def workflow_review(body: WorkflowReviewIn):
         "workflow_review_recorded",
         findings=len(added["review_findings"]),
         assumptions=len(added["assumptions"]),
+        contradictions=len(added["contradictions"]),
         risks=len(added["risks"]),
         action_items=len(added["action_items"]))
     return {"ok": True, "added": added, "workflow": _workflow_payload()}
+
+
+@app.get("/workflow/items/{collection}")
+async def workflow_items(collection: str):
+    if collection not in WORKFLOW_COLLECTIONS:
+        return _json({
+            "ok": False,
+            "error": f"unknown workflow collection {collection}",
+        }, status_code=400)
+    return {
+        "ok": True,
+        "collection": collection,
+        "items": _workflow_payload().get(collection) or [],
+    }
+
+
+@app.post("/workflow/items/{collection}/{item_id}/decision")
+async def workflow_item_decision(collection: str, item_id: str,
+                                 body: WorkflowItemDecisionIn):
+    try:
+        item = workflow.decide_item(
+            collection, item_id, body.action, body.changes, body.note, body.actor,
+            body.linked_action)
+    except ValueError as e:
+        audit_log("workflow_item_decision_rejected", collection=collection,
+                  item_id=item_id, action=body.action, actor=body.actor,
+                  error=str(e))
+        return _json({"ok": False, "error": str(e)}, status_code=400)
+    await _save_and_broadcast_workflow(
+        "workflow_item_decided", collection=collection, item_id=item_id,
+        action=body.action, actor=body.actor, note=body.note,
+        status=item.get("status"))
+    return {"ok": True, "item": item, "workflow": _workflow_payload()}
 
 
 @app.post("/workflow/validate")
@@ -540,6 +698,7 @@ async def workflow_validate(body: WorkflowValidateIn | None = None):
         result["freshness"] = "current"
         reports = rdfv.write_reports(result, body.outdir)
         result["reports"] = reports
+        result["report_urls"] = _report_urls(reports)
         workflow.record_static_validation(result)
     except (OSError, UnicodeError, ValueError) as e:
         return _json({"ok": False, "error": str(e)}, status_code=400)
@@ -593,6 +752,8 @@ async def workflow_coverage():
             "model_candidates": len(wf.get("model_candidates") or []),
             "data_sources": len(wf.get("data_sources") or []),
             "field_mappings": len(wf.get("field_mappings") or []),
+            "contradictions": len(wf.get("contradictions") or []),
+            "review_findings": len(wf.get("review_findings") or []),
             "risks": len(wf.get("risks") or []),
             "assumptions": len(wf.get("assumptions") or []),
             "action_items": len(wf.get("action_items") or []),
@@ -663,6 +824,31 @@ async def add_rdf_decision(body: WorkflowItemIn):
     return await _add_workflow_item("rdf_decisions", "rdf", body)
 
 
+@app.post("/assumption")
+async def add_assumption(body: WorkflowItemIn):
+    return await _add_workflow_item("assumptions", "assumption", body)
+
+
+@app.post("/contradiction")
+async def add_contradiction(body: WorkflowItemIn):
+    return await _add_workflow_item("contradictions", "contradiction", body)
+
+
+@app.post("/finding")
+async def add_finding(body: WorkflowItemIn):
+    return await _add_workflow_item("review_findings", "finding", body)
+
+
+@app.post("/risk")
+async def add_risk(body: WorkflowItemIn):
+    return await _add_workflow_item("risks", "risk", body)
+
+
+@app.post("/action")
+async def add_action(body: WorkflowItemIn):
+    return await _add_workflow_item("action_items", "action", body)
+
+
 @app.post("/skill")
 async def run_skill(s: SkillIn):
     """대화 텍스트 → 스킬 실행 → (옵션)그래프 반영 → 브로드캐스트."""
@@ -683,11 +869,14 @@ async def run_skill(s: SkillIn):
         qres["evidence_md"] = render_query_evidence(question, cypher, qres)
         out["query_result"] = qres
         out["cypher"] = cypher
-        # 성공한 질의는 서머리용으로 기록
-        if qres.get("ok"):
+        verification = workflow.record_query_verification(
+            question, cypher, qres, _workflow_context())
+        # Only an exact workflow seed match becomes handoff/report evidence.
+        if qres.get("ok") and verification.get("qualified") and not any(
+                v["question"] == question and v["cypher"] == cypher
+                for v in verified_queries):
             verified_queries.append(
                 {"question": question, "cypher": cypher, "count": qres["count"]})
-        workflow.record_query_verification(question, cypher, qres)
         _autosave_session()
         return _json(out)
 
@@ -701,6 +890,12 @@ async def run_skill(s: SkillIn):
 @app.post("/entity")
 async def add_entity(e: EntityIn):
     r = g.add_entity_type(EntityType(e.name, e.properties, e.primary_key))
+    if r.get("ok"):
+        workflow.add_unique_item("model_candidates", "model", {
+            "kind": "entity", "name": e.name, "properties": e.properties,
+            "primary_key": e.primary_key, "status": "candidate",
+            "source": "graph_api",
+        })
     await broadcast()
     _autosave_session()
     return r
@@ -710,6 +905,12 @@ async def add_entity(e: EntityIn):
 async def add_relation(r: RelationIn):
     out = g.add_relation_type(
         RelationType(r.name, r.src, r.dst, r.cardinality, r.properties))
+    if out.get("ok"):
+        workflow.add_unique_item("model_candidates", "model", {
+            "kind": "relation", "name": r.name, "src": r.src, "dst": r.dst,
+            "cardinality": r.cardinality, "properties": r.properties,
+            "status": "candidate", "source": "graph_api",
+        })
     await broadcast()
     _autosave_session()
     return out
@@ -736,14 +937,16 @@ async def run_query(q: QueryIn):
     r = g.query(q.cypher, q.parameters)
     if q.question:
         r["evidence_md"] = render_query_evidence(q.question, q.cypher, r)
-        # question을 단 성공 질의는 보고서 §5(설득 증거)에 등록(중복 방지)
-        if r.get("ok") and not any(
+        verification = workflow.record_query_verification(
+            q.question, q.cypher, r, _workflow_context())
+        r["workflow_verification"] = verification
+        # Exact competency-query matches only; arbitrary successful queries remain ad hoc.
+        if r.get("ok") and verification.get("qualified") and not any(
                 v["question"] == q.question and v["cypher"] == q.cypher
                 for v in verified_queries):
             verified_queries.append(
                 {"question": q.question, "cypher": q.cypher,
                  "count": r.get("count", 0)})
-        workflow.record_query_verification(q.question, q.cypher, r)
         _autosave_session()
     return _json(r)
 
@@ -876,25 +1079,64 @@ async def export_report(body: ReportIn | None = None):
                  else last_report.get("gate_data"))
     lang = body.lang if "lang" in sent else last_report.get("lang")
     rdf_base_iri = (body.rdf_base_iri if "rdf_base_iri" in sent
-                    else last_report.get("rdf_base_iri"))
+                    else last_report.get("rdf_base_iri")
+                    or (workflow.data.get("last_validation") or {}).get("base_iri"))
 
     last_report.update(title=title, descriptions=descriptions,
                        open_issues=open_issues, schema_map=schema_map,
                        gate_data=gate_data, lang=lang,
                        rdf_base_iri=rdf_base_iri)
-    _autosave_session()
-    res = rx.export_all(g, REPORT_DIR, title, verified_queries,
+    current_verified = _current_verified_queries()
+    res = rx.export_all(g, REPORT_DIR, title, current_verified,
                         open_issues, descriptions, schema_map,
                         gate_data, lang, _workflow_payload(), rdf_base_iri)
     # 단독 실행 스냅샷 뷰어 + 복원용 JSON 함께 생성
     res["snapshot_viewer"] = sx.export_static_viewer(
         g, os.path.join(REPORT_DIR, "workshop_snapshot.html"),
-        narrations, verified_queries, title, _workflow_payload())
+        narrations, current_verified, title, _workflow_payload())
     res["snapshot_json"] = sx.export_snapshot_json(
         g, os.path.join(REPORT_DIR, "workshop_snapshot.json"),
-        narrations, verified_queries, title, _workflow_payload())
+        narrations, current_verified, title, _workflow_payload())
+    res["workshop_zip"] = _write_workshop_zip()
+    artifacts = _handoff_artifacts(res)
+    source_fingerprint = _workflow_context()["handoff_source_fingerprint"]
+    workflow.record_handoff_manifest({
+        "status": "complete",
+        "source_fingerprint": source_fingerprint,
+        "rdf_source_fingerprint": _workflow_context()[
+            "handoff_rdf_source_fingerprint"],
+        "rdf_base_iri": (rdf_base_iri or rdfx.DEFAULT_BASE_IRI),
+        "artifacts": artifacts,
+        "artifact_urls": _report_urls(artifacts),
+    })
+    # Render once more so the packaged report and snapshots include the manifest.
+    current_verified = _current_verified_queries()
+    res = rx.export_all(g, REPORT_DIR, title, current_verified,
+                        open_issues, descriptions, schema_map,
+                        gate_data, lang, _workflow_payload(), rdf_base_iri)
+    res["snapshot_viewer"] = sx.export_static_viewer(
+        g, os.path.join(REPORT_DIR, "workshop_snapshot.html"),
+        narrations, current_verified, title, _workflow_payload())
+    res["snapshot_json"] = sx.export_snapshot_json(
+        g, os.path.join(REPORT_DIR, "workshop_snapshot.json"),
+        narrations, current_verified, title, _workflow_payload())
+    res["workshop_zip"] = _write_workshop_zip()
+    workflow.data["handoff_manifest"]["artifacts"] = _handoff_artifacts(res)
+    workflow.data["handoff_manifest"]["artifact_urls"] = _report_urls(
+        workflow.data["handoff_manifest"]["artifacts"])
+    final_artifacts = workflow.data["handoff_manifest"]["artifacts"]
+    workflow.data["handoff_manifest"]["missing_artifacts"] = sorted(
+        key for key in REQUIRED_HANDOFF_ARTIFACTS
+        if not final_artifacts.get(key)
+    )
+    workflow.data["handoff_manifest"]["status"] = (
+        "complete"
+        if not workflow.data["handoff_manifest"]["missing_artifacts"]
+        else "incomplete"
+    )
+    _autosave_session()
     audit_log("report_exported", title=title, lang=lang)
-    return res
+    return {**res, "handoff_manifest": workflow.data["handoff_manifest"]}
 
 
 class RdfExportIn(BaseModel):
@@ -939,44 +1181,25 @@ async def import_snapshot(s: ImportIn):
 @app.get("/export/snapshot.html", response_class=HTMLResponse)
 async def export_snapshot():
     """대화·인스턴스·스키마·상태를 그대로 담은 단독 실행 HTML(브라우저에서 바로 열림)."""
-    return sx.build_static_viewer(g, narrations, verified_queries,
+    return sx.build_static_viewer(g, narrations, _current_verified_queries(),
                                   last_report.get("title") or "온톨로지 워크샵 스냅샷",
                                   _workflow_payload())
 
 
 @app.get("/download/workshop.zip")
 async def download_zip():
-    """보고서(md/html/docx) + 단독 스냅샷 + Neptune 익스포트를 ZIP 한 방에."""
-    # 최신 상태로 산출물 재생성(마지막 설명/제목 재사용)
-    rx.export_all(g, REPORT_DIR, last_report.get("title") or "온톨로지 워크샵 결과",
-                  verified_queries, last_report.get("open_issues"),
-                  last_report.get("descriptions"), last_report.get("schema_map"),
-                  last_report.get("gate_data"), last_report.get("lang"),
-                  _workflow_payload(), last_report.get("rdf_base_iri"))
-    title = last_report.get("title") or "온톨로지 워크샵 스냅샷"
-    sx.export_static_viewer(
-        g, os.path.join(REPORT_DIR, "workshop_snapshot.html"),
-        narrations, verified_queries, title, _workflow_payload())
-    # 스킬 재발동 복원용 JSON도 묶음에 포함
-    sx.export_snapshot_json(
-        g, os.path.join(REPORT_DIR, "workshop_snapshot.json"),
-        narrations, verified_queries, title, _workflow_payload())
-
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for root, _dirs, files in os.walk(REPORT_DIR):
-            for fn in files:
-                # 내부 임시·설명 json은 제외하되 복원용 스냅샷 json은 포함
-                if fn.startswith("~$") or (
-                        fn.endswith(".json") and fn != "workshop_snapshot.json"):
-                    continue
-                full = os.path.join(root, fn)
-                arc = os.path.relpath(full, REPORT_DIR)
-                z.write(full, arc)
-    buf.seek(0)
+    """Regenerate the current handoff package, then return its recorded ZIP."""
+    await export_report(ReportIn())
+    path = (workflow.data.get("handoff_manifest") or {}).get(
+        "artifacts", {}).get("workshop_zip")
+    if not path or not os.path.isfile(path):
+        return _json({"ok": False, "error": "workshop ZIP was not generated"},
+                     status_code=500)
+    with open(path, "rb") as handle:
+        content = handle.read()
     stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M")
     return Response(
-        content=buf.getvalue(), media_type="application/zip",
+        content=content, media_type="application/zip",
         headers={"Content-Disposition":
                  f'attachment; filename="ontoforge_workshop_{stamp}.zip"'})
 

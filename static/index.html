@@ -41,7 +41,7 @@
   header .tools .lang-dd .menu button:hover{background:#16212e;color:var(--ink)}
   header .tools .lang-dd .menu button.on{background:var(--accent);color:#05130d}
 
-  .wrap{flex:1;display:grid;grid-template-columns:400px 1fr 280px;min-height:0;
+  .wrap{flex:1;display:grid;grid-template-columns:minmax(300px,380px) 1fr minmax(360px,430px);min-height:0;
     transition:grid-template-columns .18s ease}
   /* 그리드 아이템이 0폭 트랙으로 줄어들 수 있게 + 접힘 시 내용 클립 */
   .feed-col,.center,.right{min-width:0}
@@ -118,7 +118,7 @@
   .odlc-bar{height:6px;border-radius:99px;background:#0a0f16;border:1px solid var(--line);overflow:hidden;margin:6px 0}
   .odlc-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));width:0}
   .odlc-console{margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
-  .odlc-console label{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:7px 0 4px}
+  .odlc-console label,.odlc-console .field-label{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:7px 0 4px}
   .odlc-console textarea,.odlc-console select{width:100%;background:#0a0f16;border:1px solid var(--line);
     color:var(--ink);border-radius:7px;font-family:var(--mono);font-size:11px;padding:8px;outline:none}
   .odlc-console textarea{min-height:82px;resize:vertical;line-height:1.45}
@@ -136,8 +136,64 @@
   .odlc-mini .meta{font-size:10px;color:var(--muted);margin-top:3px}
   .odlc-mini .status{float:right;border-radius:99px;padding:1px 6px;border:1px solid var(--line);font-size:9px}
   .odlc-mini .status.verified,.odlc-mini .status.pass,.odlc-mini .status.validated_static,.odlc-mini .status.available,.odlc-mini .status.confirmed{border-color:#1d5e4c;color:var(--accent)}
-  .odlc-mini .status.missing,.odlc-mini .status.failed,.odlc-mini .status.fail,.odlc-mini .status.conflicting{border-color:#5a2730;color:#ff8aa0}
-  .odlc-mini .status.unknown,.odlc-mini .status.partial,.odlc-mini .status.warning,.odlc-mini .status.stale,.odlc-mini .status.candidate{border-color:#5e4a1d;color:var(--warn)}
+  .odlc-mini .status.missing,.odlc-mini .status.failed,.odlc-mini .status.fail,.odlc-mini .status.conflicting,.odlc-mini .status.needs_fix{border-color:#5a2730;color:#ff8aa0}
+  .odlc-mini .status.unknown,.odlc-mini .status.partial,.odlc-mini .status.warning,.odlc-mini .status.stale,.odlc-mini .status.unproven,.odlc-mini .status.candidate{border-color:#5e4a1d;color:var(--warn)}
+  .odlc-mini .status.assumed,.odlc-mini .status.revision_requested,.odlc-mini .status.missing_evidence{border-color:#5e4a1d;color:var(--warn)}
+  .odlc-mini .status.rejected,.odlc-mini .status.resolved,.odlc-mini .status.out_of_scope{border-color:#435164;color:#9babc0}
+  button:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+  button:disabled{opacity:.45;cursor:wait;filter:saturate(.5)}
+  .stage-lock{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 9px;
+    border:1px solid var(--line);border-radius:7px;background:#0a0f16;font-size:10px;color:var(--muted)}
+  .stage-lock strong{color:var(--ink);font-size:11px}
+  .gate-list{display:grid;gap:5px;margin:8px 0}
+  .gate-row{width:100%;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;text-align:left;
+    padding:7px 8px;background:#0a0f16;border:1px solid var(--line);border-radius:7px;color:var(--ink);
+    font-family:var(--mono);font-size:10px;cursor:pointer}
+  .gate-row.current{border-color:var(--accent2);box-shadow:inset 3px 0 0 var(--accent2)}
+  .gate-row .gate-state{font-size:9px;text-transform:uppercase;color:var(--muted)}
+  .gate-row.pass .gate-state{color:var(--accent)} .gate-row.fail .gate-state{color:#ff8aa0}
+  .gate-row.partial .gate-state{color:var(--warn)}
+  .gate-detail{padding:8px;border:1px dashed var(--line);border-radius:7px;background:#0b121b;margin-bottom:8px}
+  .gate-detail-title{font-size:10px;color:var(--accent2);margin-bottom:6px}
+  .gate-check{display:grid;grid-template-columns:auto 1fr;gap:7px;font-size:10px;line-height:1.4;margin:5px 0;color:var(--muted)}
+  .gate-check.pass .mark{color:var(--accent)} .gate-check.fail .mark{color:#ff8aa0}
+  .cockpit-tabs{display:flex;gap:4px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:thin}
+  .cockpit-tabs button{flex:0 0 auto;background:#0a0f16;border:1px solid var(--line);color:var(--muted);
+    border-radius:99px;padding:5px 9px;font-family:var(--mono);font-size:9px;cursor:pointer}
+  .cockpit-tabs button.active{border-color:var(--accent);background:#0f1f1a;color:var(--accent)}
+  .panel-summary{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:9px;margin-bottom:6px}
+  .odlc-card-actions{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px;padding-top:6px;border-top:1px solid var(--line)}
+  .odlc-card-actions button{background:#111c28;border:1px solid var(--line);color:var(--muted);font-family:var(--mono);
+    font-size:9px;border-radius:5px;padding:4px 6px;cursor:pointer}
+  .odlc-card-actions button:hover{border-color:var(--accent2);color:var(--ink)}
+  .validation-scope{border-left:3px solid var(--warn);padding:7px 8px;background:#181410;color:#d6c49f;
+    font-size:9px;line-height:1.45;margin:7px 0;border-radius:0 6px 6px 0}
+  .validation-checks{margin-top:7px;max-height:180px;overflow:auto}
+  .report-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .report-links a{font-size:9px;color:var(--accent2)}
+  dialog{border:1px solid #3b4b60;border-radius:12px;background:#111923;color:var(--ink);padding:0;
+    box-shadow:0 24px 80px rgba(0,0,0,.65);width:min(480px,calc(100vw - 28px))}
+  dialog::backdrop{background:rgba(3,7,12,.78);backdrop-filter:blur(3px)}
+  .dialog-body{padding:18px}.dialog-body h2{font-size:14px;margin:0 0 6px}.dialog-body p{font-size:10px;color:var(--muted);line-height:1.5}
+  .dialog-body label{display:block;font-size:10px;color:var(--muted);margin:12px 0 5px}
+  .dialog-body textarea,.dialog-body input{width:100%;background:#090f16;border:1px solid var(--line);color:var(--ink);
+    font-family:var(--mono);border-radius:7px;padding:9px;min-height:80px}
+  .dialog-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:14px}.dialog-actions button{font-family:var(--mono);
+    border-radius:7px;border:1px solid var(--line);padding:7px 11px;background:#0d151f;color:var(--muted);cursor:pointer}
+  .dialog-actions .danger{border-color:#7a3441;color:#ff9aaa;background:#231116}
+  @media (max-width:1100px){
+    body{height:auto;min-height:100vh;overflow:auto}.wrap{grid-template-columns:minmax(280px,34vw) 1fr;grid-template-rows:minmax(520px,70vh) auto}
+    .right{grid-column:1/-1;display:grid;grid-template-columns:minmax(260px,1fr) minmax(360px,1.5fr);border-left:0;border-top:1px solid var(--line);max-height:none}
+    .right>.sec:nth-child(n+3){display:none}.center{min-height:520px}
+    .right.panel-hidden,.feed-col.panel-hidden{display:none!important}.feed-col.panel-hidden + .center{grid-column:1/-1}
+  }
+  @media (max-width:720px){
+    header{padding:10px;gap:8px}header .status{width:100%;margin-left:0}.tools{margin-left:0!important;overflow-x:auto;max-width:100%}
+    .wrap{display:flex;flex-direction:column}.feed-col{height:36vh;min-height:260px;border-right:0;border-bottom:1px solid var(--line)}
+    .center{height:55vh;min-height:420px}.right{display:block}.right>.sec:nth-child(n){display:block}.panel-hidden{display:none!important}
+    .odlc-actions{grid-template-columns:1fr}.odlc-actions button.primary{grid-column:auto}.toggle{max-width:calc(100% - 24px)}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
@@ -148,11 +204,11 @@
     <button id="btnRight" onclick="togglePanel('right')" data-i18n="btnState" data-i18n-title="ttState" title="상태창 접기/펴기">상태 ◨</button>
     <span style="width:1px;background:var(--line);align-self:stretch"></span>
     <!--SRVBTNS-->
-    <button onclick="resetGraph()" data-i18n="btnReset" data-i18n-title="ttReset" title="백지에서 시작">⟲ <span data-i18n="btnResetT">백지</span></button>
-    <button onclick="exportReport()" data-i18n-title="ttReport" title="보고서 생성 후 새 탭에서 열기">📄 <span data-i18n="btnReport">보고서</span></button>
+      <button onclick="resetGraph(this)" data-i18n="btnReset" data-i18n-title="ttReset" title="백지에서 시작">⟲ <span data-i18n="btnResetT">백지</span></button>
+      <button onclick="exportReport(this)" data-i18n-title="ttReport" title="보고서 생성 후 새 탭에서 열기">📄 <span data-i18n="btnReport">보고서</span></button>
     <button onclick="openSnapshot()" data-i18n-title="ttSnap" title="대화·그래프·상태를 담은 단독 실행 HTML 열기">🖥 <span data-i18n="btnSnap">스냅샷</span></button>
-    <button onclick="downloadZip()" data-i18n-title="ttZip" title="보고서+스냅샷+Neptune 묶음 ZIP 다운로드">⬇ ZIP</button>
-    <button onclick="exportNeptune()" data-i18n-title="ttNeptune" title="Neptune 익스포트">⤓ Neptune</button>
+      <button onclick="downloadZip(this)" data-i18n-title="ttZip" title="보고서+스냅샷+Neptune 묶음 ZIP 다운로드">⬇ ZIP</button>
+      <button onclick="exportNeptune(this)" data-i18n-title="ttNeptune" title="Neptune 익스포트">⤓ Neptune</button>
     <!--/SRVBTNS-->
     <span style="width:1px;background:var(--line);align-self:stretch"></span>
     <span class="lang-dd" id="langDd">
@@ -193,7 +249,7 @@
   </main>
 
   <!-- 우측: 현재 그래프 요약 -->
-  <aside class="right">
+  <aside class="right" aria-label="AI-ODLC workshop cockpit">
     <div class="sec">
       <h3 data-i18n="hCurrent">현재 상태</h3>
       <div class="stat"><span data-i18n="sEnt">엔티티 타입 (T-Box)</span><b id="nEnt">0</b></div>
@@ -207,28 +263,30 @@
         <div class="odlc-stage" id="wfStage">Inception</div>
         <div class="stat"><span data-i18n="wfProgress">진행률</span><b id="wfProgress">0%</b></div>
         <div class="odlc-bar"><div class="odlc-fill" id="wfFill"></div></div>
-        <div class="odlc-question" id="wfQuestion">-</div>
-        <div id="wfGates"></div>
+        <div class="odlc-question" id="wfQuestion" aria-live="polite">-</div>
+        <div class="gate-list" id="wfGates"></div>
+        <div class="gate-detail" id="wfGateDetail"></div>
         <div class="stat"><span data-i18n="wfClaims">Claims</span><b id="wfClaims">0</b></div>
         <div class="stat"><span data-i18n="wfQuestions">Questions</span><b id="wfQuestions">0</b></div>
         <div class="stat"><span data-i18n="wfMappings">Mappings</span><b id="wfMappings">0</b></div>
         <div class="stat"><span data-i18n="wfActions">Actions</span><b id="wfActions">0</b></div>
         <div class="stat"><span data-i18n="wfQueries">Query seeds</span><b id="wfQueries">0</b></div>
         <div class="odlc-console">
-          <label for="wfStageSelect" data-i18n="wfStageInput">stage</label>
-          <select id="wfStageSelect"></select>
+          <span class="field-label" id="wfStageLabel" data-i18n="wfStageInput">stage (read-only)</span>
+          <div class="stage-lock" role="status" aria-labelledby="wfStageLabel"><strong id="wfStageLocked">inception</strong><span>🔒 sequential</span></div>
           <label for="wfAnswer" data-i18n="wfAnswerInput">answer / data structure</label>
           <textarea id="wfAnswer" data-i18n-placeholder="wfAnswerPh" placeholder="사용자 스토리, 도메인 이벤트, 질문, 테이블 스키마, RDF 결정 등을 입력하세요. JSON도 가능합니다."></textarea>
           <div class="odlc-actions">
-            <button class="primary" onclick="submitWorkflowAnswer()" data-i18n="wfSubmit">AI-ODLC 답변 반영</button>
-            <button onclick="advanceWorkflow(false)" data-i18n="wfAdvance">Gate 통과</button>
-            <button onclick="advanceWorkflow(true)" data-i18n="wfForce">강제 진행</button>
-            <button onclick="reviewWorkflow()" data-i18n="wfReview">적대적 리뷰</button>
-            <button onclick="validateWorkflow()" data-i18n="wfValidate">RDF/SHACL 검증</button>
-            <button onclick="refreshNextQuestion()" data-i18n="wfNextQ">다음 질문</button>
+            <button class="primary async-action" onclick="submitWorkflowAnswer(this)" data-i18n="wfSubmit">AI-ODLC 답변 반영</button>
+            <button class="async-action" onclick="advanceWorkflow(false,this)" data-i18n="wfAdvance">Gate 통과</button>
+            <button class="async-action" onclick="openForceDialog()" data-i18n="wfForce">강제 진행</button>
+            <button class="async-action" onclick="reviewWorkflow(this)" data-i18n="wfReview">적대적 리뷰</button>
+            <button class="async-action" onclick="validateWorkflow(this)" data-i18n="wfValidate">RDF 정적 검증</button>
+            <button class="async-action" onclick="refreshNextQuestion(this)" data-i18n="wfNextQ">다음 질문</button>
           </div>
-          <div class="odlc-status" id="wfStatus"></div>
+          <div class="odlc-status" id="wfStatus" role="status" aria-live="polite"></div>
         </div>
+        <div class="cockpit-tabs" id="wfTabs" role="tablist" aria-label="Workflow evidence panels"></div>
         <div class="odlc-detail" id="wfDetail"></div>
       </div>
     </div>
@@ -239,8 +297,44 @@
   </aside>
 </div>
 
+<dialog id="forceDialog" aria-labelledby="forceTitle">
+  <form method="dialog" class="dialog-body" onsubmit="return false">
+    <h2 id="forceTitle">Force advance with an audit reason</h2>
+    <p>Only the next stage is allowed. The reason and bypassed gate names are retained in workflow history and the audit log.</p>
+    <label for="forceReason">Reason</label>
+    <textarea id="forceReason" required minlength="8" placeholder="Explain the facilitator decision and follow-up ownership."></textarea>
+    <div class="dialog-actions">
+      <button type="button" onclick="closeForceDialog()">Cancel</button>
+      <button type="button" class="danger async-action" onclick="confirmForceAdvance(this)">Force next stage</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="decisionDialog" aria-labelledby="decisionTitle">
+  <form method="dialog" class="dialog-body" onsubmit="return false">
+    <h2 id="decisionTitle">Review evidence</h2>
+    <p id="decisionContext"></p>
+    <label for="decisionNote">Decision note</label>
+    <textarea id="decisionNote" required placeholder="Why is this decision justified?"></textarea>
+    <label for="decisionChanges">Revised fields (JSON, for revise/update)</label>
+    <textarea id="decisionChanges" placeholder='{"text":"Revised evidence"}'></textarea>
+    <label for="decisionOwner">Linked action owner (required to accept high risks/findings)</label>
+    <input id="decisionOwner" placeholder="owner or team">
+    <div class="dialog-actions">
+      <button type="button" onclick="closeDecisionDialog()">Cancel</button>
+      <button type="button" class="async-action" onclick="submitDecision(this)">Apply decision</button>
+    </div>
+  </form>
+</dialog>
+
 <script>
 let cy, view="abox", lastData={tbox:{entities:{},relations:{}},snapshot:{nodes:[],edges:[]}}, lastWorkflow={};
+let activeWorkflowPanel='stories', activeGateName='', pendingDecision=null;
+const pendingRequests=new Set();
+document.addEventListener('cancel',event=>{
+  if(event.target?.id==='forceDialog')document.getElementById('forceReason').value='';
+  if(event.target?.id==='decisionDialog')pendingDecision=null;
+},true);
 
 // ---- i18n (KO / EN / JA) — UI 문자열만. 엔티티/데이터 라벨은 고객 데이터라 번역 안 함 ----
 const I18N={
@@ -258,7 +352,7 @@ const I18N={
     hCurrent:"현재 상태", sEnt:"엔티티 타입 (T-Box)", sRel:"관계 타입 (T-Box)", sNode:"인스턴스 노드 (A-Box)", sEdge:"인스턴스 엣지 (A-Box)",
     hWorkflow:"AI-ODLC", wfProgress:"진행률", wfClaims:"Claims", wfQuestions:"Questions", wfMappings:"Mappings", wfActions:"Actions", wfQueries:"Query seeds",
     wfStageInput:"stage", wfAnswerInput:"answer / data structure", wfAnswerPh:"사용자 스토리, 도메인 이벤트, 질문, 테이블 스키마, RDF 결정 등을 입력하세요. JSON도 가능합니다.",
-    wfSubmit:"AI-ODLC 답변 반영", wfAdvance:"Gate 통과", wfForce:"강제 진행", wfReview:"적대적 리뷰", wfValidate:"RDF/SHACL 검증", wfNextQ:"다음 질문",
+    wfSubmit:"AI-ODLC 답변 반영", wfAdvance:"Gate 통과", wfForce:"강제 진행", wfReview:"적대적 리뷰", wfValidate:"RDF 정적 인계 검증", wfNextQ:"다음 질문",
     wfNeedAnswer:"답변을 입력하세요.", wfSubmitting:"반영 중…", wfDone:"반영 완료", wfAdvancing:"진행 중…", wfReviewing:"리뷰 생성 중…", wfValidating:"정적 검증 중…", wfNexting:"다음 질문 갱신 중…",
     hEnt:"엔티티 타입", hRel:"관계 타입", hInsp:"노드 인스펙터", inspEmpty:"노드를 클릭하면 속성이 표시됩니다.",
     none:"아직 없음", noProps:"(속성 없음)", relation:"관계", type:"타입", rows:"건", focusBtn:"🔍 그래프에서 이 결과만 보기",
@@ -284,7 +378,7 @@ const I18N={
     hCurrent:"Current State", sEnt:"Entity types (T-Box)", sRel:"Relation types (T-Box)", sNode:"Instance nodes (A-Box)", sEdge:"Instance edges (A-Box)",
     hWorkflow:"AI-ODLC", wfProgress:"Progress", wfClaims:"Claims", wfQuestions:"Questions", wfMappings:"Mappings", wfActions:"Actions", wfQueries:"Query seeds",
     wfStageInput:"stage", wfAnswerInput:"answer / data structure", wfAnswerPh:"Enter a user story, domain event, question, table schema, RDF decision, or JSON payload.",
-    wfSubmit:"Apply AI-ODLC answer", wfAdvance:"Pass gate", wfForce:"Force advance", wfReview:"Adversarial review", wfValidate:"Validate RDF/SHACL", wfNextQ:"Next question",
+    wfSubmit:"Apply AI-ODLC answer", wfAdvance:"Pass gate", wfForce:"Force advance", wfReview:"Adversarial review", wfValidate:"Static RDF handoff check", wfNextQ:"Next question",
     wfNeedAnswer:"Enter an answer first.", wfSubmitting:"Applying…", wfDone:"Applied", wfAdvancing:"Advancing…", wfReviewing:"Generating review…", wfValidating:"Running static validation…", wfNexting:"Refreshing next question…",
     hEnt:"Entity types", hRel:"Relation types", hInsp:"Node Inspector", inspEmpty:"Click a node to see its properties.",
     none:"None yet", noProps:"(no properties)", relation:"relation", type:"type", rows:"rows", focusBtn:"🔍 Show only this result",
@@ -310,7 +404,7 @@ const I18N={
     hCurrent:"現在の状態", sEnt:"エンティティ型 (T-Box)", sRel:"リレーション型 (T-Box)", sNode:"インスタンスノード (A-Box)", sEdge:"インスタンスエッジ (A-Box)",
     hWorkflow:"AI-ODLC", wfProgress:"進捗", wfClaims:"Claims", wfQuestions:"Questions", wfMappings:"Mappings", wfActions:"Actions", wfQueries:"Query seeds",
     wfStageInput:"stage", wfAnswerInput:"answer / data structure", wfAnswerPh:"ユーザーストーリー、ドメインイベント、質問、テーブルスキーマ、RDF決定、JSONを入力してください。",
-    wfSubmit:"AI-ODLC回答を反映", wfAdvance:"Gate通過", wfForce:"強制進行", wfReview:"敵対的レビュー", wfValidate:"RDF/SHACL検証", wfNextQ:"次の質問",
+    wfSubmit:"AI-ODLC回答を反映", wfAdvance:"Gate通過", wfForce:"強制進行", wfReview:"敵対的レビュー", wfValidate:"RDF静的引継チェック", wfNextQ:"次の質問",
     wfNeedAnswer:"回答を入力してください。", wfSubmitting:"反映中…", wfDone:"反映完了", wfAdvancing:"進行中…", wfReviewing:"レビュー生成中…", wfValidating:"静的検証中…", wfNexting:"次の質問を更新中…",
     hEnt:"エンティティ型", hRel:"リレーション型", hInsp:"ノードインスペクター", inspEmpty:"ノードをクリックすると属性が表示されます。",
     none:"まだありません", noProps:"(属性なし)", relation:"リレーション", type:"タイプ", rows:"件", focusBtn:"🔍 この結果だけグラフ表示",
@@ -390,6 +484,10 @@ const style=[
     'text-valign':'center','text-halign':'center','width':48,'height':48,
     'text-outline-color':'#ffffff','text-outline-opacity':0.55,'text-outline-width':1.6,
     'text-max-width':'72px','text-wrap':'wrap'}},
+  {selector:'node.wf-confirmed',style:{'border-color':'#34d3a6','border-width':4}},
+  {selector:'node.wf-assumed',style:{'border-color':'#f7b955','border-width':4,'border-style':'dashed'}},
+  {selector:'node.wf-conflicting',style:{'border-color':'#ff6b7d','border-width':5,'border-style':'double'}},
+  {selector:'node.wf-missing',style:{'border-color':'#8b98aa','border-width':4,'border-style':'dotted','background-opacity':.48}},
   {selector:'node[type="tbox"]',style:{'shape':'round-rectangle','width':108,'height':42,
     'background-color':ele=>colorFor(ele.data('etype')),'background-opacity':0.9,
     'border-color':ele=>ringFor(ele.data('etype')),'border-width':2,
@@ -397,6 +495,10 @@ const style=[
   {selector:'edge',style:{'width':2,'line-color':'#3a506b','target-arrow-color':'#3a506b',
     'target-arrow-shape':'triangle','curve-style':'bezier','label':edgeLabel,
     'font-size':'9px','color':'#aebcd0','text-rotation':'autorotate','text-background-color':'#0d1117','text-background-opacity':0.92,'text-background-padding':3}},
+  {selector:'edge.wf-confirmed',style:{'line-color':'#34d3a6','target-arrow-color':'#34d3a6','width':4}},
+  {selector:'edge.wf-assumed',style:{'line-color':'#f7b955','target-arrow-color':'#f7b955','line-style':'dashed','width':3}},
+  {selector:'edge.wf-conflicting',style:{'line-color':'#ff6b7d','target-arrow-color':'#ff6b7d','line-style':'dashed','width':5}},
+  {selector:'edge.wf-missing',style:{'line-color':'#8b98aa','target-arrow-color':'#8b98aa','line-style':'dotted','opacity':.58}},
   {selector:'.hl',style:{'border-color':'#f7b955','border-width':3,'line-color':'#f7b955','target-arrow-color':'#f7b955'}},
   /* 초점(focus): 매칭된 노드만 강조, 나머지는 흐리게 / 숨김 */
   {selector:'.focus',style:{'border-color':'#ffffff','border-width':4,
@@ -499,6 +601,32 @@ function render(){
   if(focusState && view==='abox') applyFocus(focusState.ids, focusState.label);
 }
 
+function workflowStatusForElement(primary,secondary){
+  const wf=lastWorkflow||{};const key=String(primary||'').toLowerCase();const alt=String(secondary||'').toLowerCase();
+  const rank={conflicting:5,missing_evidence:4,requires_data_mapping:4,missing:4,unknown:4,assumed:3,partial:3,candidate:2,confirmed:1};let chosen='';let score=-1;
+  ['model_candidates','field_mappings','claims'].forEach(collection=>(wf[collection]||[]).forEach(item=>{
+    const exact=[item.name,item.source_element,String(item.target||'').split('.')[0]].filter(Boolean).map(v=>String(v).toLowerCase());
+    const tokens=String(item.text||'').toLowerCase().split(/[^\p{L}\p{N}_]+/u).filter(Boolean);
+    if(!((key&&(exact.includes(key)||tokens.includes(key)))||(alt&&(exact.includes(alt)||tokens.includes(alt)))))return;
+    const status=item.status||item.readiness||'candidate';const normalized=['accepted','verified','available'].includes(status)?'confirmed':status;const next=rank[normalized]??-1;if(next>score){chosen=normalized;score=next;}
+  }));return chosen;
+}
+function workflowStateClass(status){
+  if(status==='confirmed'||status==='accepted')return 'wf-confirmed';
+  if(status==='assumed'||status==='candidate')return 'wf-assumed';
+  if(status==='conflicting')return 'wf-conflicting';
+  if(['missing_evidence','requires_data_mapping','missing','unknown'].includes(status))return 'wf-missing';
+  return '';
+}
+function applyGraphWorkflowStates(wf){
+  if(!cy)return;cy.elements().forEach(element=>{
+    element.removeClass('wf-confirmed wf-assumed wf-conflicting wf-missing');
+    const primary=element.isNode()?element.data('etype'):String(element.data('label')||'').split(' ')[0];
+    const status=workflowStatusForElement(primary,element.data('label'));
+    const stateClass=workflowStateClass(status);if(stateClass)element.addClass(stateClass);
+  });
+}
+
 function updateSummary(){
   const ents=lastData.tbox.entities||{}, rels=lastData.tbox.relations||{};
   const nn=lastData.snapshot.nodes.length, ne=lastData.snapshot.edges.length;
@@ -518,7 +646,6 @@ function updateSummary(){
 
 function updateWorkflow(){
   const wf=lastWorkflow||{};
-  ensureWorkflowStages(wf);
   const progress=wf.progress||{};
   const percent=Number(progress.percent||0);
   const stage=document.getElementById('wfStage');
@@ -532,56 +659,128 @@ function updateWorkflow(){
   const gates=document.getElementById('wfGates');
   if(gates){
     const entries=Object.entries(wf.gates||{});
+    if(!activeGateName || !(activeGateName in (wf.gates||{}))) activeGateName=wf.current_stage||entries[0]?.[0]||'';
     gates.innerHTML=entries.slice(0,8).map(([name,g])=>{
       const status=(g&&g.status)||'fail';
-      return `<span class="pill ${esc(status)}">${esc(name)}: ${esc(status)}</span>`;
+      const current=name===wf.current_stage?' current':'';
+      return `<button class="gate-row ${esc(status)}${current}" type="button" onclick="selectGate('${esc(name)}')" aria-pressed="${name===activeGateName}"><span>${esc(name)}</span><span class="gate-state">${esc(status)}</span></button>`;
     }).join('') || `<span style="color:var(--muted);font-size:11px">${t('none')}</span>`;
   }
+  renderGateDetail(wf);
   const set=(id,val)=>{const el=document.getElementById(id); if(el) el.textContent=val;};
   set('wfClaims',(wf.claims||[]).length);
   set('wfQuestions',(wf.competency_questions||[]).length);
   set('wfMappings',(wf.field_mappings||[]).length);
   set('wfActions',(wf.action_items||[]).length);
   set('wfQueries',(wf.validation_queries||[]).length);
-  const sel=document.getElementById('wfStageSelect');
-  if(sel && wf.current_stage) sel.value=wf.current_stage;
+  set('wfStageLocked',wf.current_stage||'inception');
   const status=document.getElementById('wfStatus');
   if(status && wf.last_validation && wf.last_validation.summary){
     status.textContent=wf.last_validation.summary;
   }else if(status && wf.last_extraction && wf.last_extraction.summary){
     status.textContent=wf.last_extraction.summary;
   }
+  renderWorkflowTabs(wf);
   renderWorkflowDetail(wf);
+  applyGraphWorkflowStates(wf);
+}
+
+function selectGate(name){activeGateName=name;updateWorkflow();}
+
+function renderGateDetail(wf){
+  const box=document.getElementById('wfGateDetail');
+  if(!box)return;
+  const name=activeGateName||wf.current_stage;
+  const gate=(wf.gates||{})[name]||{};
+  const checks=gate.checks||[];
+  box.innerHTML=`<div class="gate-detail-title">${esc(name||'gate')} · ${esc(gate.status||'unknown')}</div>`+
+    (checks.map(c=>{const evidence=c.evidence&&Object.keys(c.evidence).length?`<div class="meta">${esc(JSON.stringify(c.evidence))}</div>`:'';return `<div class="gate-check ${esc(c.status||'fail')}"><span class="mark">${c.status==='pass'?'✓':'×'}</span><span><b>${esc(c.id||'check')}</b><br>${esc(c.requirement||'')}${evidence}</span></div>`;}).join('')||`<div class="gate-check fail"><span class="mark">×</span><span>${esc((gate.missing||[]).join(', ')||t('none'))}</span></div>`);
+}
+
+const WORKFLOW_PANELS={
+  stories:['user_stories','claims'],events:['domain_events'],questions:['competency_questions','validation_queries'],
+  model:['model_candidates'],data:['data_sources','field_mappings'],review:['review_findings','assumptions','contradictions','risks'],actions:['action_items']
+};
+function renderWorkflowTabs(wf){
+  const box=document.getElementById('wfTabs');if(!box)return;
+  box.innerHTML=Object.entries(WORKFLOW_PANELS).map(([name,collections])=>{
+    const count=collections.reduce((n,key)=>n+(wf[key]||[]).length,0);
+    return `<button type="button" role="tab" id="wfTab-${esc(name)}" aria-controls="wfDetail" tabindex="${name===activeWorkflowPanel?'0':'-1'}" class="${name===activeWorkflowPanel?'active':''}" aria-selected="${name===activeWorkflowPanel}" onclick="selectWorkflowPanel('${name}')">${esc(name)} · ${count}</button>`;
+  }).join('');
+}
+function selectWorkflowPanel(name,focus=false){if(WORKFLOW_PANELS[name]){activeWorkflowPanel=name;updateWorkflow();if(focus)document.getElementById(`wfTab-${name}`)?.focus();}}
+document.addEventListener('keydown',event=>{
+  const current=event.target?.closest?.('[role="tab"]');if(!current)return;
+  const names=Object.keys(WORKFLOW_PANELS);const index=names.indexOf(activeWorkflowPanel);
+  if(event.key==='ArrowRight'||event.key==='ArrowLeft'){
+    event.preventDefault();const delta=event.key==='ArrowRight'?1:-1;
+    selectWorkflowPanel(names[(index+delta+names.length)%names.length],true);
+  }else if(event.key==='Home'||event.key==='End'){
+    event.preventDefault();selectWorkflowPanel(event.key==='Home'?names[0]:names[names.length-1],true);
+  }
+});
+
+function evidenceTitle(collection,item){
+  if(collection==='user_stories')return `${item.actor||'-'} → ${item.goal||'-'}`;
+  if(collection==='domain_events')return item.name||item.text||'-';
+  if(collection==='competency_questions')return item.question||item.text||'-';
+  if(collection==='validation_queries')return `${item.language||''}: ${item.question||item.question_id||'-'}`;
+  if(collection==='model_candidates')return `${item.kind||'model'} · ${item.name||'-'}`;
+  if(collection==='data_sources')return `${item.type||'source'} · ${item.name||'-'}`;
+  if(collection==='field_mappings')return `${item.source||'-'}.${item.source_field||'-'} → ${item.target||'-'}`;
+  return item.text||item.name||item.id||'-';
+}
+function evidenceMeta(collection,item){
+  const parts=[];
+  if(item.priority)parts.push(`priority ${item.priority}`);if(item.severity)parts.push(`severity ${item.severity}`);
+  if(item.owner)parts.push(`owner ${item.owner}`);if(item.freshness)parts.push(`freshness ${item.freshness}`);
+  if(item.verification_freshness)parts.push(`verification ${item.verification_freshness}`);if(item.verification_relevance)parts.push(`relevance ${item.verification_relevance}`);
+  if(item.expected_answer_shape)parts.push(`shape ${(item.expected_answer_shape||[]).join(', ')}`);
+  if(item.category)parts.push(item.category);if(item.merge_conflicts?.length)parts.push(`${item.merge_conflicts.length} merge conflict`);
+  return parts.join(' · ');
+}
+function decisionActions(collection,item,index){
+  if(!['claims','assumptions','contradictions','review_findings','risks','action_items'].includes(collection))return '';
+  const terminal=['resolved','rejected','out_of_scope'].includes(item.status);
+  if(terminal)return `<div class="odlc-card-actions"><button type="button" data-collection="${esc(collection)}" data-index="${index}" data-action="update" onclick="openDecisionFromButton(this)">edit</button><button type="button" data-collection="${esc(collection)}" data-index="${index}" data-action="revise" onclick="openDecisionFromButton(this)">revise</button></div>`;
+  const actions=collection==='action_items'
+    ?['confirm','start','resolve','reject','revise']
+    :collection==='claims'||collection==='review_findings'
+      ?['confirm','reject','revise','resolve']
+      :['confirm','accept','reject','revise','resolve'];
+  return `<div class="odlc-card-actions">${actions.map(a=>`<button type="button" data-collection="${esc(collection)}" data-index="${index}" data-action="${a}" onclick="openDecisionFromButton(this)">${a}</button>`).join('')}</div>`;
 }
 
 function renderWorkflowDetail(wf){
   const box=document.getElementById('wfDetail');
   if(!box) return;
   const cards=[];
-  if(wf.last_validation && wf.last_validation.status){
+  if(activeWorkflowPanel==='actions' && wf.last_validation && wf.last_validation.status){
     const c=wf.last_validation.counts||{};
-    const vst=wf.last_validation.freshness==='stale'?'stale':wf.last_validation.status;
-    cards.push(miniCard('static validation', wf.last_validation.summary||'-',
-      vst,
-      `${wf.last_validation.freshness||'unknown'} · ${c.passed||0} pass · ${c.warnings||0} warning · ${c.failed||0} fail · no SPARQL/SHACL engine execution`));
+    const approval=wf.last_validation.handoff_approval||'not_approved';
+    const vst=wf.last_validation.freshness==='stale'?'stale':approval==='approved'?wf.last_validation.status:'warning';
+    const checks=(wf.last_validation.checks||[]).map(ch=>`<div class="gate-check ${esc(ch.status||'fail')}"><span class="mark">${ch.status==='pass'?'✓':ch.status==='warning'?'!':'×'}</span><span>${esc(ch.message||ch.id||'')}</span></div>`).join('');
+    const urls=wf.last_validation.report_urls||{};
+    const links=Object.entries(urls).map(([name,url])=>`<a href="${esc(url)}${authQuery()}" target="_blank" rel="noopener">${esc(name)}</a>`).join('');
+    cards.push(`<div class="odlc-mini"><span class="status ${esc(vst)}">${esc(vst)}</span><div class="k">RDF handoff static validation</div><div class="v">${esc(wf.last_validation.summary||'-')}</div><div class="meta">source ${wf.last_validation.freshness||'unknown'} · handoff ${esc(approval)} · ${c.passed||0} pass · ${c.warnings||0} warning · ${c.failed||0} fail</div><div class="validation-scope">Structural seed check only. SPARQL was not executed and SHACL engine conformance was not evaluated. A pass approves handoff only when its RDF input fingerprint matches the packaged bundle.</div><div class="validation-checks">${checks}</div><div class="report-links">${links}</div></div>`);
   }
-  (wf.competency_questions||[]).slice(0,3).forEach(q=>cards.push(miniCard(
-    'question', q.question||q.text||'-', q.query_readiness||q.status||'candidate',
-    (q.expected_answer_shape||[]).join(', '))));
-  (wf.field_mappings||[]).slice(0,3).forEach(m=>cards.push(miniCard(
-    'mapping', `${m.source||'-'}.${m.source_field||'-'} → ${m.target||'-'}`,
-    m.status||m.readiness||'unknown', m.owner||m.freshness||'')));
-  (wf.validation_queries||[]).slice(0,3).forEach(v=>cards.push(miniCard(
-    'query', `${v.language||''}: ${v.question||v.question_id||'-'}`,
-    v.readiness||v.status||'candidate', v.query||'')));
-  (wf.risks||[]).slice(0,2).forEach(r=>cards.push(miniCard(
-    'risk', r.text||'-', r.severity||r.status||'open', r.owner||'')));
-  box.innerHTML=cards.join('') || `<div class="odlc-mini"><div class="k">evidence</div><div class="v">${t('none')}</div></div>`;
+  if(activeWorkflowPanel==='actions' && wf.handoff_manifest && wf.handoff_manifest.status){
+    const manifest=wf.handoff_manifest;const urls=manifest.artifact_urls||{};
+    const links=Object.entries(urls).map(([name,url])=>`<a href="${esc(url)}${authQuery()}" target="_blank" rel="noopener">${esc(name)}</a>`).join('');
+    const artifactGate=((wf.gates||{}).validation_handoff?.checks||[]).find(ch=>ch.id==='handoff.artifacts')||{};
+    const manifestStatus=artifactGate.status==='pass'?'current':'stale';
+    cards.push(`<div class="odlc-mini"><span class="status ${manifestStatus}">${manifestStatus}</span><div class="k">handoff artifact manifest</div><div class="v">${Object.keys(manifest.artifacts||{}).length} recorded artifact(s)</div><div class="meta">generated ${esc(manifest.generated_at||'-')} · report / snapshot / Neptune / RDF / ZIP</div><div class="report-links">${links}</div></div>`);
+  }
+  (WORKFLOW_PANELS[activeWorkflowPanel]||[]).forEach(collection=>{
+    (wf[collection]||[]).forEach((item,index)=>cards.push(miniCard(collection,evidenceTitle(collection,item),item.effective_status||item.status||item.readiness||item.query_readiness||'candidate',evidenceMeta(collection,item),decisionActions(collection,item,index))));
+  });
+  box.setAttribute('role','tabpanel');box.setAttribute('aria-labelledby',`wfTab-${activeWorkflowPanel}`);
+  box.innerHTML=`<div class="panel-summary"><span>${esc(activeWorkflowPanel)} evidence</span><span>${cards.length} item(s)</span></div>`+(cards.join('') || `<div class="odlc-mini"><div class="k">evidence</div><div class="v">${t('none')}</div></div>`);
 }
 
-function miniCard(kind,value,status,meta){
+function miniCard(kind,value,status,meta,actions=''){
   const st=String(status||'candidate');
-  return `<div class="odlc-mini"><span class="status ${esc(st)}">${esc(st)}</span><div class="k">${esc(kind)}</div><div class="v">${esc(value)}</div>${meta?`<div class="meta">${esc(meta)}</div>`:''}</div>`;
+  return `<div class="odlc-mini"><span class="status ${esc(st)}">${esc(st)}</span><div class="k">${esc(kind)}</div><div class="v">${esc(value)}</div>${meta?`<div class="meta">${esc(meta)}</div>`:''}${actions}</div>`;
 }
 
 function workflowLinksFor(primary, secondary){
@@ -606,90 +805,130 @@ function workflowLinksFor(primary, secondary){
   return '<br><br><span style="color:var(--muted)">AI-ODLC evidence</span><br>'+hits.slice(0,4).map(h=>'• '+esc(h)).join('<br>');
 }
 
-function ensureWorkflowStages(wf){
-  const sel=document.getElementById('wfStageSelect');
-  if(!sel || sel.dataset.ready) return;
-  const gates=Object.keys((wf&&wf.gates)||{});
-  const stages=gates.length?gates:[
-    'inception','discovery','event_discovery','story_to_question',
-    'model_synthesis','data_grounding','adversarial_review','validation_handoff'
-  ];
-  sel.innerHTML=stages.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');
-  sel.dataset.ready='1';
-}
-
 function setWorkflowStatus(msg){
   const el=document.getElementById('wfStatus');
   if(el) el.textContent=msg||'';
 }
 
-async function submitWorkflowAnswer(){
+async function apiRequest(key,url,options,button){
+  if(pendingRequests.has(key))throw new Error('Request already in progress');
+  pendingRequests.add(key);if(button)button.disabled=true;
+  try{
+    const response=await fetch(url,options||{});
+    let data={};try{data=await response.json();}catch(_ignored){data={error:`HTTP ${response.status}`};}
+    if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);
+    return data;
+  }finally{pendingRequests.delete(key);if(button)button.disabled=false;}
+}
+async function runWorkflowAction(key,button,work){
+  try{return await work();}catch(error){setWorkflowStatus(error.message||String(error));return null;}
+}
+
+async function submitWorkflowAnswer(button){
   const ta=document.getElementById('wfAnswer');
   const text=(ta&&ta.value||'').trim();
   if(!text){ setWorkflowStatus(t('wfNeedAnswer')); return; }
-  const sel=document.getElementById('wfStageSelect');
-  const stage=(sel&&sel.value) || (lastWorkflow.current_stage||'inception');
+  const stage=lastWorkflow.current_stage||'inception';
   setWorkflowStatus(t('wfSubmitting'));
-  const r=await fetch('/workflow/answer',{
+  const d=await runWorkflowAction('answer',button,()=>apiRequest('answer','/workflow/answer',{
     method:'POST',
     headers:authHeaders({'Content-Type':'application/json'}),
     body:JSON.stringify({text,stage,role:'customer'})
-  });
-  const d=await r.json();
+  },button));
+  if(!d)return;
   if(d.workflow) lastWorkflow=d.workflow;
   if(ta) ta.value='';
   updateWorkflow();
   setWorkflowStatus(d.ok ? (t('wfDone')+': '+((d.summary&&d.summary.summary)||'')) : (d.error||'error'));
 }
 
-async function advanceWorkflow(force){
+async function advanceWorkflow(force,button,reason=''){
   setWorkflowStatus(t('wfAdvancing'));
-  const r=await fetch('/workflow/advance',{
+  const d=await runWorkflowAction('advance',button,()=>apiRequest('advance','/workflow/advance',{
     method:'POST',
     headers:authHeaders({'Content-Type':'application/json'}),
-    body:JSON.stringify({force:!!force})
-  });
-  const d=await r.json();
+    body:JSON.stringify({force:!!force,reason,actor:'operator'})
+  },button));
+  if(!d)return;
   if(d.workflow) lastWorkflow=d.workflow;
   updateWorkflow();
   const blocked=d.blocked&&d.gate ? 'blocked: '+((d.gate.missing||[]).join(', ')) : '';
   setWorkflowStatus(d.ok ? t('wfDone') : (blocked || d.error || 'blocked'));
+  return !!d.ok;
 }
 
-async function reviewWorkflow(){
+async function reviewWorkflow(button){
   setWorkflowStatus(t('wfReviewing'));
-  const r=await fetch('/workflow/review',{
+  const d=await runWorkflowAction('review',button,()=>apiRequest('review','/workflow/review',{
     method:'POST',
     headers:authHeaders({'Content-Type':'application/json'}),
     body:JSON.stringify({})
-  });
-  const d=await r.json();
+  },button));
+  if(!d)return;
   if(d.workflow) lastWorkflow=d.workflow;
   updateWorkflow();
   setWorkflowStatus(d.ok ? t('wfDone') : (d.error||'error'));
 }
 
-async function validateWorkflow(){
+async function validateWorkflow(button){
   setWorkflowStatus(t('wfValidating'));
-  const r=await fetch('/workflow/validate',{
+  const d=await runWorkflowAction('validate',button,()=>apiRequest('validate','/workflow/validate',{
     method:'POST',
     headers:authHeaders({'Content-Type':'application/json'}),
     body:JSON.stringify({})
-  });
-  const d=await r.json();
+  },button));
+  if(!d)return;
   if(d.workflow) lastWorkflow=d.workflow;
   updateWorkflow();
   const v=d.validation||{};
   setWorkflowStatus(v.summary || d.error || (d.ok?t('wfDone'):'error'));
 }
 
-async function refreshNextQuestion(){
+async function refreshNextQuestion(button){
   setWorkflowStatus(t('wfNexting'));
-  const r=await fetch('/workflow/next-question',{headers:authHeaders()});
-  const d=await r.json();
+  const d=await runWorkflowAction('next',button,()=>apiRequest('next','/workflow/next-question',{headers:authHeaders()},button));
+  if(!d)return;
   if(d.workflow) lastWorkflow=d.workflow;
   updateWorkflow();
   setWorkflowStatus(d.ok ? (d.question||t('wfDone')) : (d.error||'error'));
+}
+
+function openForceDialog(){const d=document.getElementById('forceDialog');document.getElementById('forceReason').value='';d.showModal();setTimeout(()=>document.getElementById('forceReason').focus(),0);}
+function closeForceDialog(){document.getElementById('forceDialog').close();}
+async function confirmForceAdvance(button){
+  const reason=document.getElementById('forceReason').value.trim();
+  if(reason.length<8){setWorkflowStatus('Force reason must be at least 8 characters.');return;}
+  if(await advanceWorkflow(true,button,reason))closeForceDialog();
+}
+
+function findWorkflowItem(collection,id){return ((lastWorkflow||{})[collection]||[]).find(item=>item.id===id);}
+function openDecisionFromButton(button){
+  const collection=button.dataset.collection;const index=Number(button.dataset.index);const item=((lastWorkflow||{})[collection]||[])[index];
+  if(item)openDecisionDialog(collection,item.id,button.dataset.action);
+}
+function openDecisionDialog(collection,id,action){
+  const item=findWorkflowItem(collection,id);if(!item)return;
+  pendingDecision={collection,id,action};
+  document.getElementById('decisionTitle').textContent=`${action} ${collection}`;
+  document.getElementById('decisionContext').textContent=evidenceTitle(collection,item);
+  document.getElementById('decisionNote').value='';document.getElementById('decisionChanges').value='';document.getElementById('decisionOwner').value='';
+  document.getElementById('decisionDialog').showModal();setTimeout(()=>document.getElementById('decisionNote').focus(),0);
+}
+function closeDecisionDialog(){pendingDecision=null;document.getElementById('decisionDialog').close();}
+async function submitDecision(button){
+  if(!pendingDecision)return;
+  const {collection,id,action}=pendingDecision;const note=document.getElementById('decisionNote').value.trim();
+  if(!note){setWorkflowStatus('A decision note is required.');return;}
+  let changes={};const raw=document.getElementById('decisionChanges').value.trim();
+  if(raw){try{changes=JSON.parse(raw);if(!changes||Array.isArray(changes)||typeof changes!=='object')throw new Error();}catch(_error){setWorkflowStatus('Revised fields must be a valid JSON object.');return;}}
+  if((action==='update'||action==='revise') && !Object.keys(changes).length){setWorkflowStatus(`${action} requires revised fields.`);return;}
+  const owner=document.getElementById('decisionOwner').value.trim();
+  const item=findWorkflowItem(collection,id)||{};
+  const linked_action=owner?{text:`Address accepted ${collection} ${id}: ${evidenceTitle(collection,item)}`,owner}:null;
+  const d=await runWorkflowAction(`decision:${collection}:${id}`,button,()=>apiRequest(`decision:${collection}:${id}`,`/workflow/items/${encodeURIComponent(collection)}/${encodeURIComponent(id)}/decision`,{
+    method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({action,changes,note,actor:'operator',linked_action})
+  },button));
+  if(!d)return;if(d.workflow)lastWorkflow=d.workflow;updateWorkflow();setWorkflowStatus(`${action} applied to ${id}`);closeDecisionDialog();
 }
 
 // ---- 진행 피드 ----
@@ -747,12 +986,12 @@ function buildFeedEl(it){
   return div;
 }
 
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function md(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
   .replace(/`(.+?)`/g,'<code>$1</code>').replace(/\n/g,'<br>');}
 
 // ---- 연결 상태 표시(언어 전환 시 재적용 가능) ----
-let connState='waiting';   // waiting | live | retry | snapshot
+let connState='waiting', reconnectTimer=null;   // waiting | live | retry | snapshot
 function setConn(s){
   if(s) connState=s;
   const map={waiting:'connWaiting',live:'connLive',retry:'connRetry',snapshot:'connSnap'};
@@ -777,14 +1016,15 @@ function authQuery(){
 
 // ---- WebSocket ----
 function connect(){
+  if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null;}
   const proto=location.protocol==='https:'?'wss':'ws';
   const token=authToken();
   const auth=token?`?token=${encodeURIComponent(token)}`:'';
   const ws=new WebSocket(`${proto}://${location.host}/ws${auth}`);
   ws.onopen=()=>{setConn('live');};
-  ws.onclose=()=>{setConn('retry');setTimeout(connect,1500);};
+  ws.onclose=()=>{setConn('retry');reconnectTimer=setTimeout(connect,1500);};
   ws.onmessage=ev=>{
-    const msg=JSON.parse(ev.data);
+    let msg;try{msg=JSON.parse(ev.data);}catch(_error){setWorkflowStatus('Received an invalid live update.');return;}
     if(msg.type==='init'){
       lastData={tbox:msg.tbox,snapshot:msg.snapshot};
       lastWorkflow=msg.workflow||{};
@@ -807,21 +1047,35 @@ function connect(){
 }
 
 // ---- 수동 보조 버튼 ----
-async function resetGraph(){
+async function resetGraph(button){
   if(!confirm(t('confReset')))return;
-  await fetch('/reset',{method:'POST',headers:authHeaders()});
+  try{await apiRequest('reset','/reset',{method:'POST',headers:authHeaders()},button);}
+  catch(error){setWorkflowStatus(error.message||String(error));}
 }
-async function exportReport(){
+async function exportReport(button){
   addFeed({kind:'note',title:t('repGenTitle'),text:t('repGenBody'),ts:''});
-  await fetch('/export/report',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({lang:LANG})});
-  addFeed({kind:'note',title:t('repDoneTitle'),text:t('repDoneBody'),ts:''});
-  window.open('/files/workshop_report.html'+authQuery(),'_blank');
+  try{
+    await apiRequest('report','/export/report',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({lang:LANG})},button);
+    addFeed({kind:'note',title:t('repDoneTitle'),text:t('repDoneBody'),ts:''});
+    window.open('/files/workshop_report.html'+authQuery(),'_blank');
+  }catch(error){setWorkflowStatus(error.message||String(error));}
 }
 function openSnapshot(){ window.open('/export/snapshot.html'+authQuery(),'_blank'); }
-function downloadZip(){ window.location.href='/download/workshop.zip'+authQuery(); }
-async function exportNeptune(){
-  const r=await fetch('/export/neptune',{method:'POST',headers:authHeaders()});const d=await r.json();
-  addFeed({kind:'note',title:t('nepTitle'),text:`openCypher: ${d.opencypher}\nnodes: ${d.bulk.nodes}\nedges: ${d.bulk.edges}`,ts:''});
+async function downloadZip(button){
+  if(pendingRequests.has('zip'))return;pendingRequests.add('zip');if(button)button.disabled=true;
+  try{
+    const response=await fetch('/download/workshop.zip',{headers:authHeaders()});
+    if(!response.ok){let message=`HTTP ${response.status}`;try{message=(await response.json()).error||message;}catch(_ignored){}throw new Error(message);}
+    const blob=await response.blob();const url=URL.createObjectURL(blob);const link=document.createElement('a');
+    link.href=url;link.download=`ontoforge_workshop_${new Date().toISOString().slice(0,16).replace(/[-:T]/g,'')}.zip`;document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
+  }catch(error){setWorkflowStatus(error.message||String(error));}
+  finally{pendingRequests.delete('zip');if(button)button.disabled=false;}
+}
+async function exportNeptune(button){
+  try{
+    const d=await apiRequest('neptune','/export/neptune',{method:'POST',headers:authHeaders()},button);
+    addFeed({kind:'note',title:t('nepTitle'),text:`openCypher: ${d.opencypher}\nnodes: ${d.bulk.nodes}\nedges: ${d.bulk.edges}`,ts:''});
+  }catch(error){setWorkflowStatus(error.message||String(error));}
 }
 
 // ---- 패널 접기 (좌측 피드 / 우측 상태) · 새로고침 후에도 유지 ----
@@ -830,7 +1084,8 @@ function applyPanels(){
   const L=panelState.left, R=panelState.right;
   document.querySelector('.feed-col').classList.toggle('panel-hidden',!L);
   document.querySelector('.right').classList.toggle('panel-hidden',!R);
-  document.querySelector('.wrap').style.gridTemplateColumns=`${L?'400px':'0'} 1fr ${R?'280px':'0'}`;
+  if(window.innerWidth>1100)document.querySelector('.wrap').style.gridTemplateColumns=`${L?'minmax(300px,380px)':'0'} 1fr ${R?'minmax(360px,430px)':'0'}`;
+  else document.querySelector('.wrap').style.removeProperty('grid-template-columns');
   document.getElementById('btnLeft').classList.toggle('on',L);
   document.getElementById('btnRight').classList.toggle('on',R);
   if(cy){cy.resize(); setTimeout(()=>{cy.resize();cy.fit(undefined,30);},220);}
@@ -845,6 +1100,9 @@ function loadPanels(){
   panelState.right = localStorage.getItem('of_panel_right')!=='0';
   applyPanels();
 }
+
+let panelResizeTimer=null;
+window.addEventListener('resize',()=>{clearTimeout(panelResizeTimer);panelResizeTimer=setTimeout(applyPanels,100);});
 
 initCy();loadPanels();connect();
 </script>

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import datetime as _dt
+import hashlib
 import json
 import re
 from typing import Any
@@ -79,6 +80,12 @@ CLAIM_STATUSES = {
     "missing_evidence",
     "requires_data_mapping",
     "out_of_scope",
+    "accepted",
+    "open",
+    "in_progress",
+    "rejected",
+    "revision_requested",
+    "resolved",
 }
 
 WORKFLOW_COLLECTIONS = (
@@ -90,6 +97,7 @@ WORKFLOW_COLLECTIONS = (
     "data_sources",
     "field_mappings",
     "assumptions",
+    "contradictions",
     "risks",
     "decisions",
     "review_findings",
@@ -97,6 +105,21 @@ WORKFLOW_COLLECTIONS = (
     "validation_queries",
     "rdf_decisions",
 )
+
+REQUIRED_HANDOFF_ARTIFACTS = {
+    "report_markdown", "report_html", "snapshot_html", "snapshot_json",
+    "neptune_cypher", "neptune_nodes", "neptune_edges",
+    "rdf_ontology", "rdf_instances", "rdf_jsonld", "rdf_shacl",
+    "rdf_sparql", "rdf_mapping", "rdf_neptune_handoff", "workshop_zip",
+}
+
+_VIEW_ONLY_ITEM_FIELDS = {
+    "effective_status", "verification_freshness", "verification_relevance",
+}
+
+_VIEW_ONLY_VALIDATION_FIELDS = {
+    "handoff_approval", "handoff_alignment",
+}
 
 _COLLECTION_PREFIX = {
     "claims": "claim",
@@ -107,6 +130,7 @@ _COLLECTION_PREFIX = {
     "data_sources": "source",
     "field_mappings": "mapping",
     "assumptions": "assumption",
+    "contradictions": "contradiction",
     "risks": "risk",
     "decisions": "decision",
     "review_findings": "finding",
@@ -117,19 +141,20 @@ _COLLECTION_PREFIX = {
 
 _UNIQUE_KEYS = {
     "claims": ("text",),
-    "user_stories": ("actor", "goal", "decision"),
-    "domain_events": ("name", "text"),
-    "competency_questions": ("question", "text"),
-    "model_candidates": ("kind", "name", "source_element"),
+    "user_stories": ("actor", "goal"),
+    "domain_events": ("name",),
+    "competency_questions": ("question",),
+    "model_candidates": ("kind", "name"),
     "data_sources": ("name",),
-    "field_mappings": ("source", "source_field", "target"),
+    "field_mappings": ("source", "source_field"),
     "assumptions": ("text",),
+    "contradictions": ("text",),
     "risks": ("text",),
-    "decisions": ("text", "decision"),
+    "decisions": ("text",),
     "review_findings": ("text",),
-    "action_items": ("text", "target"),
-    "validation_queries": ("language", "query", "question_id"),
-    "rdf_decisions": ("topic", "value", "text"),
+    "action_items": ("text",),
+    "validation_queries": ("language", "question_id"),
+    "rdf_decisions": ("topic",),
 }
 
 _JSON_COLLECTION_ALIASES = {
@@ -159,6 +184,8 @@ _JSON_COLLECTION_ALIASES = {
     "mappings": "field_mappings",
     "assumption": "assumptions",
     "assumptions": "assumptions",
+    "contradiction": "contradictions",
+    "contradictions": "contradictions",
     "risk": "risks",
     "risks": "risks",
     "decision": "decisions",
@@ -192,6 +219,51 @@ _EVENT_HINTS = (
 
 _RDF_HINTS = ("rdf", "shacl", "sparql", "json-ld", "jsonld", "ttl", "turtle", "uri", "iri", "namespace", "네임스페이스")
 
+REVIEWABLE_COLLECTIONS = {
+    "claims",
+    "assumptions",
+    "contradictions",
+    "review_findings",
+    "risks",
+    "action_items",
+}
+
+_STATUS_FOR_ACTION = {
+    "confirm": "confirmed",
+    "accept": "accepted",
+    "reject": "rejected",
+    "revise": "revision_requested",
+    "resolve": "resolved",
+    "start": "in_progress",
+}
+
+_TERMINAL_REVIEW_STATUSES = {"rejected", "resolved", "out_of_scope"}
+_PENDING_REVIEW_STATUSES = {
+    "candidate", "open", "assumed", "conflicting", "missing_evidence",
+    "requires_data_mapping", "revision_requested",
+}
+
+_INITIAL_REVIEW_STATUSES = {
+    "claims": {
+        "candidate", "assumed", "conflicting", "missing_evidence",
+        "requires_data_mapping", "out_of_scope",
+    },
+    "assumptions": {"candidate", "assumed", "open"},
+    "contradictions": {"candidate", "conflicting", "open"},
+    "review_findings": {"candidate", "open"},
+    "risks": {"candidate", "open"},
+    "action_items": {"candidate", "open"},
+}
+
+REVIEW_CATEGORIES = {
+    "ambiguity",
+    "contradiction",
+    "causality",
+    "event_modeling",
+    "over_modeling",
+    "sensitivity",
+}
+
 
 def _now() -> str:
     return _dt.datetime.now().replace(microsecond=0).isoformat()
@@ -217,6 +289,33 @@ def _has_text(item: dict[str, Any], *keys: str) -> bool:
     return False
 
 
+_PLACEHOLDER_TEXT = {
+    "-", "?", "x", "na", "n/a", "none", "null", "tbd", "todo",
+    "unknown", "unspecified", "pending", "미정", "불명", "모름",
+    "未定", "不明",
+}
+
+
+def _meaningful_text(item: dict[str, Any], *keys: str) -> bool:
+    for key in keys:
+        value = item.get(key)
+        if not isinstance(value, str):
+            continue
+        normalized = re.sub(r"\s+", " ", value).strip().lower().rstrip(".")
+        if normalized in _PLACEHOLDER_TEXT:
+            continue
+        if len(re.sub(r"[^\w\u0080-\uffff]", "", normalized)) >= 2:
+            return True
+    return False
+
+
+def _meaningful_values(value: Any) -> list[str]:
+    return [
+        str(item).strip() for item in _list(value)
+        if _meaningful_text({"value": str(item)}, "value")
+    ]
+
+
 def _readiness_status(value: str | None) -> str:
     raw = (value or "unknown").strip().lower().replace(" ", "_")
     aliases = {
@@ -228,6 +327,129 @@ def _readiness_status(value: str | None) -> str:
         "unknown": "unknown",
     }
     return aliases.get(raw, "unknown")
+
+
+def _event_modeling_class(value: Any) -> str:
+    raw = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "event": "event_node", "domain_event": "event_node",
+        "event_node": "event_node", "node": "event_node",
+        "relationship": "relation", "relation": "relation", "edge": "relation",
+        "attribute": "property", "property": "property",
+        "not_modeled": "not_modeled", "out_of_scope": "not_modeled",
+    }
+    return aliases.get(raw, "")
+
+
+def _status(item: dict[str, Any]) -> str:
+    return str(item.get("status") or "candidate").strip().lower()
+
+
+def _active(item: Any) -> bool:
+    return isinstance(item, dict) and _status(item) not in {
+        "rejected", "out_of_scope"
+    }
+
+
+def _high_priority(item: dict[str, Any]) -> bool:
+    return str(item.get("priority") or "").strip().lower() in {
+        "high", "critical", "must", "p0", "p1"
+    }
+
+
+def _ids(item: dict[str, Any], *keys: str) -> set[str]:
+    values: set[str] = set()
+    for key in keys:
+        value = item.get(key)
+        if isinstance(value, list):
+            values.update(str(v) for v in value if v not in (None, ""))
+        elif value not in (None, ""):
+            values.add(str(value))
+    return values
+
+
+def _has_merge_conflicts(item: dict[str, Any]) -> bool:
+    return bool(_list(item.get("merge_conflicts")))
+
+
+def _allowed_statuses(collection: str, current: str) -> set[str]:
+    if current in _TERMINAL_REVIEW_STATUSES:
+        return {current, "revision_requested"}
+    common = {"confirmed", "rejected", "revision_requested", "resolved"}
+    if collection == "action_items":
+        return common | {"accepted", "in_progress"}
+    return common | {"accepted"}
+
+
+def _history_snapshot(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: copy.deepcopy(value)
+        for key, value in item.items()
+        if key not in {"history", "created_at", "updated_at"}
+    }
+
+
+def _system_change_item(item: dict[str, Any], changes: dict[str, Any],
+                        action: str, note: str) -> None:
+    before = copy.deepcopy(item)
+    item.update(copy.deepcopy(changes))
+    item["updated_at"] = _now()
+    item.setdefault("history", []).append({
+        "at": item["updated_at"],
+        "actor": "system",
+        "action": action,
+        "note": note,
+        "before": _history_snapshot(before),
+        "after": _history_snapshot(item),
+    })
+
+
+def _clear_merge_conflicts(item: dict[str, Any], changed_fields: set[str]) -> None:
+    remaining = []
+    for proposal in _list(item.get("merge_conflicts")):
+        fields = {
+            key: value for key, value in _dict(proposal.get("fields")).items()
+            if key not in changed_fields
+        }
+        if fields:
+            updated = copy.deepcopy(proposal)
+            updated["fields"] = fields
+            remaining.append(updated)
+    if remaining:
+        item["merge_conflicts"] = remaining
+    else:
+        item.pop("merge_conflicts", None)
+
+
+def _sanitize_incoming_item(collection: str,
+                            item: dict[str, Any]) -> dict[str, Any]:
+    clean = _clean_item(copy.deepcopy(item or {}))
+    if collection == "validation_queries":
+        for field in (
+            "verification_evidence", "last_verification",
+            "last_static_validation", "verified_at",
+        ):
+            clean.pop(field, None)
+        clean["status"] = "candidate"
+        readiness = str(clean.get("readiness") or "candidate").lower()
+        clean["readiness"] = readiness if readiness in {
+            "candidate", "ready_to_draft", "needs_model", "seed_only"
+        } else "candidate"
+    elif collection == "competency_questions":
+        for field in (
+            "last_verification", "verification_status", "verified_at",
+        ):
+            clean.pop(field, None)
+        if str(clean.get("query_readiness") or "").lower() == "verified":
+            clean["query_readiness"] = "ready_to_draft"
+    if collection in REVIEWABLE_COLLECTIONS:
+        requested_status = str(clean.get("status") or "candidate").lower()
+        allowed_initial = _INITIAL_REVIEW_STATUSES[collection]
+        if requested_status not in allowed_initial:
+            clean["requested_status"] = requested_status
+            clean["status"] = (
+                "candidate" if "candidate" in allowed_initial else "open")
+    return clean
 
 
 class WorkflowState:
@@ -242,7 +464,7 @@ class WorkflowState:
     def _default() -> dict[str, Any]:
         ts = _now()
         return {
-            "version": "ai-odlc-v1",
+            "version": "ai-odlc-v2",
             "current_stage": "inception",
             "started_at": ts,
             "updated_at": ts,
@@ -257,6 +479,7 @@ class WorkflowState:
             "data_sources": [],
             "field_mappings": [],
             "assumptions": [],
+            "contradictions": [],
             "risks": [],
             "decisions": [],
             "review_findings": [],
@@ -265,6 +488,9 @@ class WorkflowState:
             "rdf_decisions": [],
             "last_extraction": {},
             "last_validation": {},
+            "handoff_manifest": {},
+            "review_runs": [],
+            "transition_history": [],
         }
 
     def reset(self) -> None:
@@ -284,18 +510,92 @@ class WorkflowState:
             base["active_question"] = NEXT_QUESTIONS[base["current_stage"]]
         for key in WORKFLOW_COLLECTIONS:
             base[key] = _list(base.get(key))
+            for item in base[key]:
+                if isinstance(item, dict):
+                    for field in _VIEW_ONLY_ITEM_FIELDS:
+                        item.pop(field, None)
         if not isinstance(base.get("last_extraction"), dict):
             base["last_extraction"] = {}
         if not isinstance(base.get("last_validation"), dict):
             base["last_validation"] = {}
+        else:
+            for field in _VIEW_ONLY_VALIDATION_FIELDS:
+                base["last_validation"].pop(field, None)
+        if not isinstance(base.get("handoff_manifest"), dict):
+            base["handoff_manifest"] = {}
+        if not isinstance(base.get("review_runs"), list):
+            base["review_runs"] = []
+        if not isinstance(base.get("transition_history"), list):
+            base["transition_history"] = []
         self.data = base
         self.touch()
 
     def touch(self) -> None:
         self.data["updated_at"] = _now()
 
+    def review_source_fingerprint(self) -> str:
+        return _review_source_fingerprint(self.data)
+
+    def handoff_source_fingerprint(self, graph_fingerprint: str = "") -> str:
+        return _handoff_source_fingerprint(self.data, graph_fingerprint)
+
+    def query_source_fingerprint(self, tbox: Any = None,
+                                 snapshot: Any = None) -> str:
+        return _query_source_fingerprint(tbox, snapshot, self.data)
+
+    def record_handoff_manifest(self, manifest: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(manifest, dict):
+            raise ValueError("handoff manifest must be an object")
+        recorded = copy.deepcopy(manifest)
+        artifacts = _dict(recorded.get("artifacts"))
+        missing = sorted(
+            key for key in REQUIRED_HANDOFF_ARTIFACTS
+            if not artifacts.get(key)
+        )
+        recorded.setdefault("generated_at", _now())
+        recorded["missing_artifacts"] = missing
+        recorded["status"] = "complete" if not missing else "incomplete"
+        self.data["handoff_manifest"] = recorded
+        self.touch()
+        return recorded
+
     def to_dict(self, context: dict[str, Any] | None = None) -> dict[str, Any]:
         out = copy.deepcopy(self.data)
+        current_query_fingerprint = _dict(context).get(
+            "query_source_fingerprint")
+        for query in _list(out.get("validation_queries")):
+            if (not isinstance(query, dict)
+                    or str(query.get("language") or "").lower() != "opencypher"):
+                continue
+            evidence = _list(query.get("verification_evidence"))
+            linked_question = next((
+                item for item in _list(out.get("competency_questions"))
+                if isinstance(item, dict)
+                and str(item.get("id") or "") == str(query.get("question_id") or "")
+            ), None)
+            relevant = bool(linked_question) and _query_covers_answer_shape(
+                query, linked_question)
+            current = bool(current_query_fingerprint) and any(
+                isinstance(item, dict) and bool(item.get("ok"))
+                and item.get("query_match") is True
+                and item.get("source_fingerprint") == current_query_fingerprint
+                for item in evidence
+            )
+            query["verification_relevance"] = (
+                "match" if relevant else "mismatch")
+            if evidence:
+                query["verification_freshness"] = (
+                    "current" if current else
+                    "stale" if current_query_fingerprint else "unknown")
+            elif _status(query) == "verified":
+                query["verification_freshness"] = "unproven"
+            if _status(query) == "verified" and not relevant:
+                query["effective_status"] = "needs_fix"
+            elif (_status(query) == "verified"
+                    and query.get("verification_freshness") != "current"):
+                query["effective_status"] = query["verification_freshness"]
+            else:
+                query["effective_status"] = _status(query)
         if out.get("last_validation"):
             out["last_validation"]["freshness"] = self._validation_freshness(
                 context)
@@ -303,6 +603,17 @@ class WorkflowState:
             out.get("current_stage"), out.get("current_stage", ""))
         gates = self.gates(context)
         out["gates"] = gates
+        if out.get("last_validation"):
+            static_check = next((
+                check for check in gates["validation_handoff"]["checks"]
+                if check.get("id") == "handoff.static_validation"
+            ), {})
+            out["last_validation"]["handoff_approval"] = (
+                "approved" if static_check.get("status") == "pass"
+                else "not_approved"
+            )
+            out["last_validation"]["handoff_alignment"] = copy.deepcopy(
+                _dict(static_check.get("evidence")))
         passed = sum(1 for g in gates.values() if g["status"] == "pass")
         out["progress"] = {
             "passed": passed,
@@ -319,8 +630,50 @@ class WorkflowState:
         if not validation:
             return "not_run"
         if not expected or not current:
-            return str(validation.get("freshness") or "unknown")
+            return "unknown"
         return "current" if expected == current else "stale"
+
+    def current_query_evidence(
+            self, context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Return only successful, relevant evidence for the current query inputs."""
+        current_fingerprint = _dict(context).get("query_source_fingerprint")
+        if not current_fingerprint:
+            return []
+        high_questions = [
+            item for item in _list(self.data.get("competency_questions"))
+            if isinstance(item, dict) and _active(item) and _high_priority(item)
+        ]
+        questions = {
+            str(item.get("id")): item for item in high_questions if item.get("id")
+        }
+        results: list[dict[str, Any]] = []
+        for query in _list(self.data.get("validation_queries")):
+            if (not isinstance(query, dict)
+                    or str(query.get("language") or "").lower() != "opencypher"
+                    or _status(query) != "verified"
+                    or _has_merge_conflicts(query)):
+                continue
+            question = questions.get(str(query.get("question_id") or ""))
+            if question is None or not _query_covers_answer_shape(query, question):
+                continue
+            evidence = next((
+                item for item in reversed(_list(query.get("verification_evidence")))
+                if isinstance(item, dict) and bool(item.get("ok"))
+                and item.get("query_match") is True
+                and item.get("source_fingerprint") == current_fingerprint
+            ), None)
+            if evidence is None:
+                continue
+            results.append({
+                "question_id": query.get("question_id"),
+                "question": question.get("question") or question.get("text"),
+                "cypher": query.get("query"),
+                "count": evidence.get("count", 0),
+                "columns": copy.deepcopy(evidence.get("columns") or []),
+                "verified_at": evidence.get("verified_at"),
+                "source_fingerprint": current_fingerprint,
+            })
+        return results
 
     def _next_id(self, collection: str, prefix: str) -> str:
         used = {str(i.get("id")) for i in _list(self.data.get(collection))
@@ -333,7 +686,15 @@ class WorkflowState:
     def add_item(self, collection: str, prefix: str, item: dict[str, Any]) -> dict[str, Any]:
         if collection not in self.data or not isinstance(self.data[collection], list):
             raise ValueError(f"unknown workflow collection {collection}")
-        clean = _clean_item(copy.deepcopy(item or {}))
+        clean = _sanitize_incoming_item(collection, item)
+        item_id = clean.get("id")
+        if item_id and any(
+                isinstance(existing, dict) and existing.get("id") == item_id
+                for existing in self.data[collection]):
+            raise ValueError(f"duplicate {collection} item id {item_id}")
+        requested_stage = clean.get("stage")
+        if requested_stage is not None and requested_stage not in STAGES:
+            raise ValueError(f"unknown workflow stage {requested_stage}")
         if not clean.get("id"):
             clean["id"] = self._next_id(collection, prefix)
         clean.setdefault("stage", self.data["current_stage"])
@@ -341,25 +702,63 @@ class WorkflowState:
         clean.setdefault("source", "user")
         clean.setdefault("created_at", _now())
         clean["updated_at"] = _now()
+        clean.setdefault("history", [])
         self.data[collection].append(clean)
         self.touch()
         return clean
 
     def add_unique_item(self, collection: str, prefix: str,
                         item: dict[str, Any]) -> dict[str, Any]:
-        """Add item unless an equivalent workflow evidence row already exists."""
-        clean = _clean_item(copy.deepcopy(item or {}))
+        """Add evidence without silently overwriting a conflicting existing row.
+
+        Equivalent rows only receive previously absent fields. Non-empty conflicting
+        values are retained as a pending merge proposal for explicit human review.
+        """
+        clean = _sanitize_incoming_item(collection, item)
         existing = self._find_equivalent(collection, clean)
         if existing:
+            before = copy.deepcopy(existing)
             changed = False
+            conflicts: dict[str, dict[str, Any]] = {}
+            ignored = {
+                "id", "created_at", "updated_at", "history", "source", "stage",
+            }
+            if collection in REVIEWABLE_COLLECTIONS or collection == "validation_queries":
+                ignored.add("status")
+            if collection == "validation_queries":
+                ignored.add("readiness")
             for key, value in clean.items():
-                if key in {"id", "created_at"} or value in (None, "", [], {}):
+                if key in ignored or value in (None, "", [], {}):
                     continue
                 if not existing.get(key):
                     existing[key] = value
                     changed = True
+                elif _norm_value(existing.get(key)) != _norm_value(value):
+                    conflicts[key] = {
+                        "existing": copy.deepcopy(existing.get(key)),
+                        "incoming": copy.deepcopy(value),
+                    }
+            if conflicts:
+                existing.setdefault("merge_conflicts", [])
+                proposal = {
+                    "at": _now(),
+                    "source": clean.get("source", "unknown"),
+                    "fields": conflicts,
+                }
+                if proposal["fields"] not in [p.get("fields") for p in existing["merge_conflicts"]]:
+                    existing["merge_conflicts"].append(proposal)
+                    changed = True
             if changed:
                 existing["updated_at"] = _now()
+                existing.setdefault("history", []).append({
+                    "at": existing["updated_at"],
+                    "actor": "system",
+                    "action": "deduplicate_merge_proposed" if conflicts
+                    else "deduplicate_fill",
+                    "note": "Equivalent evidence was merged without overwriting competing values.",
+                    "before": _history_snapshot(before),
+                    "after": _history_snapshot(existing),
+                })
                 self.touch()
             return existing
         return self.add_item(collection, prefix, clean)
@@ -367,6 +766,8 @@ class WorkflowState:
     def _find_equivalent(self, collection: str,
                          item: dict[str, Any]) -> dict[str, Any] | None:
         keys = _UNIQUE_KEYS.get(collection, ("text", "name", "question"))
+        if any(item.get(key) in (None, "", [], {}) for key in keys):
+            return None
         comparable = [
             k for k in keys
             if item.get(k) not in (None, "", [], {})
@@ -385,17 +786,28 @@ class WorkflowState:
                       role: str = "customer",
                       status: str = "candidate",
                       source: str = "workflow_answer") -> dict[str, Any]:
-        stage = stage if stage in STAGES else self.data["current_stage"]
+        current = self.data["current_stage"]
+        if stage is not None and stage not in STAGES:
+            raise ValueError(f"unknown workflow stage {stage}")
+        if stage is not None and stage != current:
+            raise ValueError(
+                f"answers can only be recorded for the current stage {current}; "
+                "advance the workflow first"
+            )
+        stage = current
         status = status if status in CLAIM_STATUSES else "candidate"
+        story_ids = [
+            str(item.get("id")) for item in _list(self.data.get("user_stories"))
+            if _active(item) and item.get("id") and _high_priority(item)
+        ]
         claim = self.add_item("claims", "claim", {
             "text": text,
             "stage": stage,
             "role": role,
             "status": status,
             "source": source,
+            **({"story_ids": story_ids} if stage == "discovery" and story_ids else {}),
         })
-        self.data["current_stage"] = stage
-        self.data["active_question"] = NEXT_QUESTIONS.get(stage, "")
         self.touch()
         return claim
 
@@ -426,9 +838,29 @@ class WorkflowState:
             for item in items:
                 if not isinstance(item, dict):
                     continue
-                item.setdefault("stage", active_stage)
+                # Stage is capture provenance, not a client-selected destination.
+                # Comprehensive early answers may populate later-stage collections,
+                # but every extracted object records where it was actually captured.
+                item["stage"] = active_stage
                 item.setdefault("source", source)
                 item.setdefault("claim_id", claim.get("id"))
+                if collection == "competency_questions" and not _ids(
+                        item, "story_id", "story_ids", "user_story_id"):
+                    story_ids = [
+                        str(story.get("id"))
+                        for story in _list(self.data.get("user_stories"))
+                        if _active(story) and story.get("id") and _high_priority(story)
+                    ]
+                    if len(story_ids) == 1:
+                        item["story_ids"] = story_ids
+                if collection == "model_candidates" and not _ids(
+                        item, "story_id", "story_ids", "event_id", "event_ids",
+                        "question_id", "question_ids", "data_source_id",
+                        "data_source_ids"):
+                    question_ids = _candidate_question_links(
+                        item, self.data.get("competency_questions"))
+                    if question_ids:
+                        item["question_ids"] = question_ids
                 added_item = self.add_unique_item(collection, prefix, item)
                 added[collection].append(added_item)
 
@@ -461,8 +893,16 @@ class WorkflowState:
             question.setdefault("query_readiness", "ready_to_draft" if has_model else "needs_model")
             answer_shape = question.get("expected_answer_shape") or question.get("answer_shape")
             query = question.get("cypher_candidate") or _cypher_seed(qtext, answer_shape)
-            question.setdefault("cypher_candidate", query)
-            question.setdefault("sparql_candidate", _sparql_seed(qtext, answer_shape))
+            if not _query_covers_answer_shape({"query": query}, question):
+                query = _cypher_seed(qtext, answer_shape)
+                question["query_readiness"] = "ready_to_draft"
+            question["cypher_candidate"] = query
+            sparql = question.get("sparql_candidate")
+            if not sparql or any(
+                    f":{_safe_label(value)}" not in sparql
+                    for value in _meaningful_values(answer_shape)):
+                sparql = _sparql_seed(qtext, answer_shape)
+            question["sparql_candidate"] = sparql
             self.add_unique_item("validation_queries", "query", {
                 "question_id": question.get("id"),
                 "question": qtext,
@@ -485,10 +925,11 @@ class WorkflowState:
             })
 
     def next_question(self, context: dict[str, Any] | None = None) -> str:
-        """Return one focused next question based on the first weak gate."""
+        """Return one focused question at or after the current stage."""
         gates = self.gates(context)
         stage = self.data.get("current_stage")
-        for candidate in STAGES:
+        start = STAGES.index(stage) if stage in STAGES else 0
+        for candidate in STAGES[start:]:
             gate = gates.get(candidate, {})
             if gate.get("status") != "pass":
                 stage = candidate
@@ -506,46 +947,215 @@ class WorkflowState:
             self.data["language"] = language
         if scope is not None:
             self.data["scope"] = scope
-        self.data["current_stage"] = "inception"
-        self.data["active_question"] = NEXT_QUESTIONS["inception"]
+        current = self.data.get("current_stage", "inception")
+        self.data["active_question"] = NEXT_QUESTIONS[current]
         self.touch()
         return self.to_dict()
 
     def advance(self, stage: str | None = None, force: bool = False,
-                context: dict[str, Any] | None = None) -> dict[str, Any]:
+                context: dict[str, Any] | None = None,
+                reason: str | None = None,
+                actor: str = "operator") -> dict[str, Any]:
         current = self.data["current_stage"]
-        target = stage
-        if target is None:
-            idx = STAGES.index(current)
-            target = STAGES[min(idx + 1, len(STAGES) - 1)]
+        idx = STAGES.index(current)
+        if idx >= len(STAGES) - 1:
+            raise ValueError("workflow is already at the final stage")
+        expected = STAGES[idx + 1]
+        target = stage or expected
         if target not in STAGES:
             raise ValueError(f"unknown workflow stage {target}")
+        if target != expected:
+            direction = "backward" if STAGES.index(target) <= idx else "skipped"
+            raise ValueError(
+                f"illegal {direction} transition {current} -> {target}; "
+                f"the only legal target is {expected}"
+            )
+        reason = (reason or "").strip()
+        if force and len(reason) < 8:
+            raise ValueError("force advance requires a reason of at least 8 characters")
         gates = self.gates(context)
-        current_gate = gates[current]
-        if not force and current_gate["status"] != "pass":
+        blocking = [
+            (name, gates[name]) for name in STAGES[:idx + 1]
+            if gates[name]["status"] != "pass"
+        ]
+        if not force and blocking:
+            blocked_stage, blocked_gate = blocking[0]
             return {
                 "ok": False,
                 "blocked": True,
                 "stage": current,
-                "gate": current_gate,
+                "blocked_stage": blocked_stage,
+                "gate": blocked_gate,
                 "workflow": self.to_dict(context),
             }
+        transition = {
+            "from": current,
+            "to": target,
+            "forced": bool(force),
+            "reason": reason if force else "",
+            "actor": actor or "operator",
+            "at": _now(),
+            "bypassed_gates": [name for name, _gate_data in blocking] if force else [],
+        }
         self.data["current_stage"] = target
         self.data["active_question"] = NEXT_QUESTIONS[target]
+        self.data.setdefault("transition_history", []).append(transition)
         self.touch()
-        return {"ok": True, "stage": target, "workflow": self.to_dict(context)}
+        return {
+            "ok": True,
+            "stage": target,
+            "transition": transition,
+            "workflow": self.to_dict(context),
+        }
+
+    def get_item(self, collection: str, item_id: str) -> dict[str, Any]:
+        if collection not in WORKFLOW_COLLECTIONS:
+            raise ValueError(f"unknown workflow collection {collection}")
+        for item in _list(self.data.get(collection)):
+            if isinstance(item, dict) and item.get("id") == item_id:
+                return item
+        raise ValueError(f"unknown {collection} item {item_id}")
+
+    def decide_item(self, collection: str, item_id: str, action: str,
+                    changes: dict[str, Any] | None = None,
+                    note: str | None = None,
+                    actor: str = "operator",
+                    linked_action: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Apply an explicit review decision and preserve its before/after history."""
+        action = (action or "").strip().lower()
+        if action not in {"update", "merge", *_STATUS_FOR_ACTION.keys()}:
+            raise ValueError(f"unsupported workflow item action {action}")
+        if collection not in WORKFLOW_COLLECTIONS:
+            raise ValueError(f"unknown workflow collection {collection}")
+        if action not in {"update", "merge"} and collection not in REVIEWABLE_COLLECTIONS:
+            raise ValueError(f"collection {collection} does not support status decisions")
+        if not (note or "").strip():
+            raise ValueError("workflow item decisions require a decision note")
+        changes = _clean_item(copy.deepcopy(changes or {}))
+        protected = {
+            "id", "created_at", "updated_at", "history",
+            "source", "requested_status", "verification_evidence",
+            "last_verification", "last_static_validation", "verified_at",
+            "linked_action_id", "linked_action_ids",
+            "merge_conflicts", "issue_key",
+            "review_runs", "transition_history", "handoff_manifest",
+            "gates", "progress", "last_validation", "last_extraction",
+        }
+        if collection in REVIEWABLE_COLLECTIONS or collection == "validation_queries":
+            protected.add("status")
+        if protected.intersection(changes):
+            raise ValueError(
+                "identity, provenance, timestamps, history, and status cannot be patched directly"
+            )
+        if any(str(key).startswith("_") for key in changes):
+            raise ValueError("internal workflow fields cannot be patched")
+        if action in {"update", "merge"} and not changes:
+            raise ValueError(f"{action} requires at least one changed field")
+        if action == "merge" and not (note or "").strip():
+            raise ValueError("merge requires a decision note")
+        review_metadata = {
+            "severity", "category", "evidence_id", "evidence_ids",
+        }
+        if review_metadata.intersection(changes) and not (note or "").strip():
+            raise ValueError(
+                "changing review classification or evidence links requires a decision note"
+            )
+
+        item = self.get_item(collection, item_id)
+        before = copy.deepcopy(item)
+        old_status = str(item.get("status") or "candidate")
+        if collection in REVIEWABLE_COLLECTIONS and old_status not in CLAIM_STATUSES:
+            raise ValueError(f"unknown workflow item status {old_status}")
+        new_status = _STATUS_FOR_ACTION.get(action, old_status)
+        allowed = _allowed_statuses(collection, old_status)
+        if action not in {"update", "merge"} and new_status not in allowed:
+            raise ValueError(
+                f"illegal {collection} status transition {old_status} -> {new_status}"
+            )
+        action_record = None
+        if (action == "accept" and collection != "action_items"
+                and str(item.get("severity") or "").lower() in {"high", "critical"}):
+            linked_action = _clean_item(copy.deepcopy(linked_action or {}))
+            if not _has_text(linked_action, "text") or not _has_text(linked_action, "owner"):
+                raise ValueError(
+                    "accepting a high/critical review item requires a linked action with text and owner"
+                )
+            linked_action.setdefault("status", "accepted")
+            linked_action.setdefault("stage", item.get("stage", "adversarial_review"))
+            linked_action.setdefault("source", "review_decision")
+            linked_action["evidence_ids"] = sorted(
+                _ids(linked_action, "evidence_id", "evidence_ids") | {item_id})
+            action_record = self.add_unique_item(
+                "action_items", "action", linked_action)
+            if _status(action_record) != "accepted":
+                _system_change_item(action_record, {"status": "accepted"},
+                                    "linked_action_accepted",
+                                    "Created atomically from an explicit review acceptance.")
+
+        applied_changes = copy.deepcopy(changes)
+        if action == "revise":
+            applied_changes = {
+                key: value for key, value in applied_changes.items()
+                if key not in {"status", "readiness"}
+            }
+        for key, value in applied_changes.items():
+            item[key] = value
+        if collection == "validation_queries" and {
+                "query", "question", "question_id", "language"
+        }.intersection(applied_changes):
+            item.pop("verification_evidence", None)
+            item.pop("last_verification", None)
+            item["status"] = "candidate"
+            item["readiness"] = (
+                "seed_only" if str(item.get("language") or "").lower() == "sparql"
+                else "ready_to_draft"
+            )
+        if collection == "competency_questions" and {
+                "question", "text", "expected_answer_shape", "answer_shape",
+                "story_id", "story_ids", "priority"
+        }.intersection(applied_changes):
+            item.pop("last_verification", None)
+            item.pop("verification_status", None)
+            item["query_readiness"] = "ready_to_draft"
+        if action not in {"update", "merge"}:
+            item["status"] = new_status
+        if applied_changes:
+            _clear_merge_conflicts(item, set(applied_changes))
+        if action_record:
+            item["linked_action_ids"] = sorted(
+                _ids(item, "linked_action_id", "linked_action_ids")
+                | {str(action_record.get("id"))})
+        item["updated_at"] = _now()
+        history_entry = {
+            "at": item["updated_at"],
+            "actor": actor or "operator",
+            "action": action,
+            "note": (note or "").strip(),
+            "before": _history_snapshot(before),
+            "after": _history_snapshot(item),
+        }
+        item.setdefault("history", []).append(history_entry)
+        self.touch()
+        return item
 
     def add_review(self, findings: list[dict] | None = None,
                    assumptions: list[dict] | None = None,
                    risks: list[dict] | None = None,
-                   action_items: list[dict] | None = None) -> dict[str, Any]:
-        added = {"review_findings": [], "assumptions": [], "risks": [], "action_items": []}
+                   action_items: list[dict] | None = None,
+                   contradictions: list[dict] | None = None) -> dict[str, Any]:
+        added = {
+            "review_findings": [], "assumptions": [], "contradictions": [],
+            "risks": [], "action_items": [],
+        }
         for item in findings or []:
             added["review_findings"].append(
                 self.add_unique_item("review_findings", "finding", item))
         for item in assumptions or []:
             added["assumptions"].append(
                 self.add_unique_item("assumptions", "assumption", item))
+        for item in contradictions or []:
+            added["contradictions"].append(
+                self.add_unique_item("contradictions", "contradiction", item))
         for item in risks or []:
             added["risks"].append(self.add_unique_item("risks", "risk", item))
         for item in action_items or []:
@@ -554,78 +1164,143 @@ class WorkflowState:
         return added
 
     def generate_review(self, context: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Generate an evidence-based adversarial review from current gaps."""
-        gates = self.gates(context)
+        """Run bounded deterministic semantic checks; no retry or background loop."""
         findings: list[dict[str, Any]] = []
         risks: list[dict[str, Any]] = []
         assumptions: list[dict[str, Any]] = []
+        contradictions: list[dict[str, Any]] = []
         action_items: list[dict[str, Any]] = []
+        # Ambiguity and contradictions: explicit merge conflicts and conflicting claims.
+        for collection in WORKFLOW_COLLECTIONS:
+            for item in _list(self.data.get(collection)):
+                if not isinstance(item, dict) or not _has_merge_conflicts(item):
+                    continue
+                findings.append(_review_finding(
+                    "ambiguity", "high",
+                    f"{collection} item {item.get('id')} has unresolved competing values.",
+                    item.get("stage", "adversarial_review"), [item.get("id")]))
 
-        for stage, gate in gates.items():
-            if gate.get("status") == "pass":
-                continue
-            missing = ", ".join(gate.get("missing") or []) or "required evidence"
-            findings.append({
-                "text": f"{STAGE_LABELS.get(stage, stage)} gate lacks {missing}.",
-                "severity": "high" if gate.get("status") == "fail" else "medium",
-                "status": "open",
-                "stage": stage,
-            })
-            action_items.append({
-                "text": f"Provide or confirm {missing} for {STAGE_LABELS.get(stage, stage)}.",
-                "owner": "customer",
-                "status": "open",
-                "stage": stage,
-            })
-
-        for story in _list(self.data.get("user_stories")):
-            if isinstance(story, dict) and not _has_text(story, "success_metric"):
-                assumptions.append({
-                    "text": "A user story exists without an explicit success metric.",
-                    "status": "assumed",
-                    "owner": story.get("actor", "customer"),
-                    "stage": story.get("stage", "inception"),
-                })
-
-        for q in _list(self.data.get("competency_questions")):
-            if isinstance(q, dict) and not q.get("expected_answer_shape"):
-                findings.append({
-                    "text": (
-                        "Competency question needs an expected answer shape: "
-                        f"{q.get('question') or q.get('text')}"
-                    ),
-                    "severity": "medium",
+        claims = [item for item in _list(self.data.get("claims")) if _active(item)]
+        for idx, left in enumerate(claims):
+            for right in claims[idx + 1:]:
+                if not _claims_conflict(left, right):
+                    continue
+                issue_key = "claim-conflict:" + ":".join(sorted([
+                    str(left.get("id")), str(right.get("id"))]))
+                contradictions.append({
+                    "issue_key": issue_key,
+                    "text": f"Claims {left.get('id')} and {right.get('id')} assert incompatible values.",
+                    "category": "contradiction",
+                    "severity": "critical",
                     "status": "open",
-                    "stage": q.get("stage", "story_to_question"),
+                    "stage": "adversarial_review",
+                    "evidence_ids": [left.get("id"), right.get("id")],
+                    "source": "automatic_adversarial_review",
                 })
 
-        for mapping in _list(self.data.get("field_mappings")):
-            if not isinstance(mapping, dict):
+        # Unsupported causality language requires external evidence or a decision.
+        causal_pattern = re.compile(
+            r"\b(cause[sd]?|caused by|leads? to|results? in|because of|drives?)\b|"
+            r"(원인|때문|유발|초래|영향을 준다)", re.I)
+        for claim in claims:
+            if causal_pattern.search(str(claim.get("text") or "")) and not _has_text(
+                    claim, "evidence", "evidence_id", "validation_method"):
+                findings.append(_review_finding(
+                    "causality", "high",
+                    f"Claim {claim.get('id')} makes a causal assertion without validation evidence.",
+                    claim.get("stage", "discovery"), [claim.get("id")]))
+
+        # Event-vs-edge mistakes: temporal/contextual properties modeled as bare relations.
+        for model in _list(self.data.get("model_candidates")):
+            if not _active(model) or str(model.get("kind") or "").lower() != "relation":
                 continue
-            status = _readiness_status(mapping.get("status") or mapping.get("readiness"))
-            if status in {"missing", "unknown"}:
+            props = {str(key).lower() for key in _dict(model.get("properties"))}
+            if props & {"time", "timestamp", "date", "quantity", "amount", "channel", "status"}:
+                findings.append(_review_finding(
+                    "event_modeling", "high",
+                    f"Relation {model.get('name')} carries event context and may require an event node decision.",
+                    "model_synthesis", [model.get("id")]))
+
+        # Duplicate and over-generalized model concepts.
+        model_items = [item for item in _list(self.data.get("model_candidates")) if _active(item)]
+        for idx, left in enumerate(model_items):
+            for right in model_items[idx + 1:]:
+                if _similar_model_names(left.get("name"), right.get("name")):
+                    findings.append(_review_finding(
+                        "over_modeling", "medium",
+                        f"Model candidates {left.get('name')} and {right.get('name')} may duplicate the same concept.",
+                        "model_synthesis", [left.get("id"), right.get("id")]))
+        for model in model_items:
+            if not _candidate_has_link(model):
+                findings.append(_review_finding(
+                    "over_modeling", "high",
+                    f"Model candidate {model.get('name') or model.get('id')} has no traceable story, event, question, or source need.",
+                    "model_synthesis", [model.get("id")]))
+
+        # Sensitive data must have an explicit handling/necessity decision.
+        sensitive_pattern = re.compile(
+            r"(email|phone|address|birth|ssn|passport|health|medical|salary|"
+            r"이메일|전화|주소|생년|주민|여권|의료|건강|급여)", re.I)
+        for source in _list(self.data.get("data_sources")):
+            haystack = " ".join([
+                str(source.get("name") or ""),
+                " ".join(str(key) for key in _dict(source.get("fields"))),
+                str(source.get("sensitivity") or ""),
+            ])
+            sensitive = sensitive_pattern.search(haystack) or str(
+                source.get("sensitivity") or "").lower() in {"high", "restricted", "confidential", "pii"}
+            if sensitive and not _has_text(source, "handling", "purpose", "retention", "privacy_decision"):
                 risks.append({
-                    "text": (
-                        f"Data mapping for {mapping.get('target', 'model element')} "
-                        f"is {status}."
-                    ),
-                    "severity": "high" if status == "missing" else "medium",
-                    "status": "open",
-                    "stage": "data_grounding",
+                    "text": f"Data source {source.get('name')} appears sensitive without a handling or necessity decision.",
+                    "category": "sensitivity", "severity": "high", "status": "open",
+                    "stage": "data_grounding", "evidence_ids": [source.get("id")],
+                    "source": "automatic_adversarial_review",
                 })
 
-        if not self.data.get("rdf_decisions"):
-            risks.append({
-                "text": "RDF handoff lacks confirmed base IRI/URI generation decisions.",
-                "severity": "medium",
-                "status": "open",
-                "stage": "adversarial_review",
-            })
-
-        return self.add_review(findings, assumptions, risks, action_items)
+        review_fingerprint = _review_source_fingerprint(self.data, context)
+        added = self.add_review(
+            findings=findings,
+            assumptions=assumptions,
+            contradictions=contradictions,
+            risks=risks,
+            action_items=action_items,
+        )
+        for collection in ("review_findings", "contradictions", "risks"):
+            for item in added[collection]:
+                previous = item.get("last_seen_review_fingerprint")
+                if (previous and previous != review_fingerprint
+                        and _status(item) == "resolved"):
+                    _system_change_item(item, {
+                        "status": "revision_requested",
+                        "last_seen_review_fingerprint": review_fingerprint,
+                    }, "automatic_issue_recurred",
+                       "The same issue was detected again after material evidence changed.")
+                elif previous != review_fingerprint:
+                    _system_change_item(item, {
+                        "last_seen_review_fingerprint": review_fingerprint,
+                    }, "automatic_issue_observed",
+                       "The bounded review observed this issue in the current evidence.")
+        run = {
+            "id": f"review-run-{len(_list(self.data.get('review_runs'))) + 1:03d}",
+            "at": _now(),
+            "source": "automatic_adversarial_review",
+            "categories_assessed": sorted(REVIEW_CATEGORIES),
+            "reviewed_evidence_count": _review_evidence_count(self.data),
+            "source_fingerprint": review_fingerprint,
+            "result": "issues_found" if findings or contradictions or risks else "no_issue_detected",
+            "new_item_ids": [
+                item.get("id") for collection in added.values() for item in collection
+                if isinstance(item, dict) and item.get("id")
+            ],
+        }
+        self.data.setdefault("review_runs", []).append(run)
+        self.touch()
+        added["review_run"] = run
+        return added
 
     def record_query_verification(self, question: str | None, cypher: str,
-                                  result: dict[str, Any]) -> dict[str, Any]:
+                                  result: dict[str, Any],
+                                  context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Attach openCypher execution evidence to matching workflow query seeds."""
         question = (question or "").strip()
         cypher = (cypher or "").strip()
@@ -635,11 +1310,22 @@ class WorkflowState:
         evidence = {
             "verified_at": _now(),
             "ok": ok,
+            "query_match": False,
+            "source_fingerprint": _dict(context).get(
+                "query_source_fingerprint"),
             "count": result.get("count", 0),
             "columns": result.get("columns", []),
             "error": result.get("error"),
         }
         updated = 0
+        qualified = 0
+        latest_evidence = evidence
+        matched_question_ids: set[str] = set()
+        question_by_id = {
+            str(item.get("id")): item
+            for item in _list(self.data.get("competency_questions"))
+            if isinstance(item, dict) and item.get("id")
+        }
         for item in _list(self.data.get("validation_queries")):
             if not isinstance(item, dict):
                 continue
@@ -647,24 +1333,47 @@ class WorkflowState:
                 continue
             if not _query_matches(item, question, cypher):
                 continue
-            item["status"] = "verified" if ok else "failed"
-            item["readiness"] = "verified" if ok else "needs_fix"
+            matched_evidence = copy.deepcopy(evidence)
+            matched_evidence["query_match"] = True
+            matched_evidence["question_id"] = item.get("question_id")
+            linked_question = question_by_id.get(str(item.get("question_id") or ""))
+            answer_shape_match = bool(linked_question) and _query_covers_answer_shape(
+                item, linked_question)
+            matched_evidence["answer_shape_match"] = answer_shape_match
+            qualifies = ok and answer_shape_match
+            if qualifies:
+                qualified += 1
+            item["status"] = "verified" if qualifies else "failed"
+            item["readiness"] = "verified" if qualifies else "needs_fix"
             item.setdefault("verification_evidence", [])
-            item["verification_evidence"].append(evidence)
+            item["verification_evidence"].append(matched_evidence)
+            latest_evidence = matched_evidence
             item["updated_at"] = _now()
+            if item.get("question_id"):
+                matched_question_ids.add(str(item["question_id"]))
             updated += 1
         for q in _list(self.data.get("competency_questions")):
             if not isinstance(q, dict):
                 continue
-            qtext = q.get("question") or q.get("text") or ""
-            if question and _norm_value(qtext) == _norm_value(question):
-                q["query_readiness"] = "verified" if ok else "needs_fix"
-                q["verification_status"] = "verified" if ok else "failed"
-                q["last_verification"] = evidence
+            if str(q.get("id") or "") in matched_question_ids:
+                matched_query = next((
+                    item for item in _list(self.data.get("validation_queries"))
+                    if isinstance(item, dict)
+                    and str(item.get("question_id") or "") == str(q.get("id") or "")
+                    and _status(item) == "verified"
+                ), None)
+                qualifies = matched_query is not None
+                q["query_readiness"] = "verified" if qualifies else "needs_fix"
+                q["verification_status"] = "verified" if qualifies else "failed"
+                q["last_verification"] = copy.deepcopy(matched_evidence)
                 q["updated_at"] = _now()
         if updated:
             self.touch()
-        return {"updated": updated, "evidence": evidence}
+        return {
+            "updated": updated,
+            "qualified": qualified,
+            "evidence": latest_evidence,
+        }
 
     def record_static_validation(self, result: dict[str, Any]) -> dict[str, Any]:
         """Record one bounded RDF handoff validation result.
@@ -708,10 +1417,12 @@ class WorkflowState:
                 "validated_static" if sparql_ok
                 else ("needs_review" if sparql_status == "warning" else "needs_fix")
             )
-            item["status"] = readiness
-            item["readiness"] = readiness
-            item["last_static_validation"] = copy.deepcopy(sparql_evidence)
-            item["updated_at"] = _now()
+            _system_change_item(item, {
+                "status": readiness,
+                "readiness": readiness,
+                "last_static_validation": copy.deepcopy(sparql_evidence),
+            }, "static_validation_recorded",
+               "SPARQL seed structure was checked without executing SPARQL.")
             updated_queries += 1
 
         finding_text = (
@@ -749,17 +1460,28 @@ class WorkflowState:
                     "owner": "operator",
                 })
             for item in (finding, action):
-                item["status"] = "open"
+                _system_change_item(item, {
+                    "status": "open",
+                    "validation_summary": recorded.get("summary"),
+                    "validation_report": _dict(recorded.get("reports")).get(
+                        "validation_markdown"),
+                }, "static_validation_failed",
+                   "The latest bounded static validation failed.")
                 item.pop("resolved_at", None)
-                item["validation_summary"] = recorded.get("summary")
-                item["validation_report"] = _dict(recorded.get("reports")).get(
-                    "validation_markdown")
-                item["updated_at"] = _now()
+        elif status == "pass":
+            for item in review_items + action_items:
+                _system_change_item(item, {
+                    "status": "resolved",
+                    "resolved_at": _now(),
+                }, "static_validation_resolved",
+                   "A later bounded static validation no longer failed.")
         else:
             for item in review_items + action_items:
-                item["status"] = "resolved"
-                item["resolved_at"] = _now()
-                item["updated_at"] = _now()
+                _system_change_item(item, {
+                    "status": "open",
+                    "validation_summary": recorded.get("summary"),
+                }, "static_validation_warning",
+                   "A warning-only rerun does not resolve the prior validation failure.")
 
         self.touch()
         return {
@@ -769,159 +1491,1074 @@ class WorkflowState:
         }
 
     def gates(self, context: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+        """Evaluate domain-neutral evidence quality, linkage, and decisions."""
         ctx = context or {}
         graph = _dict(ctx.get("graph"))
-        verified_count = int(ctx.get("verified_count") or 0)
         gates: dict[str, dict[str, Any]] = {}
 
-        stories = _list(self.data.get("user_stories"))
-        decisions = _list(self.data.get("decisions"))
-        inception_ok = any(
-            _has_text(s, "actor") and _has_text(s, "goal")
-            and _has_text(s, "decision") for s in stories
-        )
-        if not inception_ok:
-            inception_ok = bool(decisions and _has_text(decisions[0], "text", "decision"))
-        gates["inception"] = _gate(
-            inception_ok,
-            missing=[] if inception_ok else [
-                "actor", "goal", "decision", "success metric or explicit scope"
-            ],
-            evidence={"user_stories": len(stories), "decisions": len(decisions)},
-        )
-
-        discovery_claims = [
-            c for c in _list(self.data.get("claims"))
-            if c.get("stage") in {"discovery", "inception"} and _has_text(c, "text")
+        stories = [item for item in _list(self.data.get("user_stories")) if _active(item)]
+        high_stories = [item for item in stories if _high_priority(item)]
+        complete_stories = [
+            item for item in high_stories
+            if not _has_merge_conflicts(item)
+            and all(_meaningful_text(item, key) for key in (
+                "actor", "goal", "decision", "success_metric", "scope"))
         ]
-        gates["discovery"] = _gate(
-            len(discovery_claims) > 0,
-            missing=[] if discovery_claims else ["domain narrative claim"],
-            evidence={"claims": len(discovery_claims)},
-        )
+        gates["inception"] = _quality_gate([
+            _check("inception.priority_story", bool(high_stories),
+                   "at least one high-priority user story"),
+            _check("inception.story_fields", len(complete_stories) == len(high_stories)
+                   and bool(high_stories),
+                   "actor, goal, decision, success metric, and one-day scope for every high-priority story",
+                   {"complete_story_ids": [s.get("id") for s in complete_stories]}),
+        ], {"user_stories": len(stories), "high_priority": len(high_stories)})
 
-        events = _list(self.data.get("domain_events"))
-        gates["event_discovery"] = _gate(
-            len(events) > 0,
-            missing=[] if events else ["domain events or explicit no-event rationale"],
-            evidence={"domain_events": len(events)},
-        )
-
-        questions = _list(self.data.get("competency_questions"))
-        gates["story_to_question"] = _gate(
-            len(stories) > 0 and len(questions) > 0,
-            missing=[
-                *([] if stories else ["user story"]),
-                *([] if questions else ["competency question"]),
-            ],
-            evidence={"user_stories": len(stories), "competency_questions": len(questions)},
-        )
-
-        candidates = _list(self.data.get("model_candidates"))
-        graph_has_model = (
-            int(graph.get("entities") or 0) > 0 and int(graph.get("relations") or 0) > 0
-        )
-        gates["model_synthesis"] = _gate(
-            bool(candidates) or graph_has_model,
-            missing=[] if (candidates or graph_has_model)
-            else ["model candidates or graph T-Box"],
-            evidence={
-                "model_candidates": len(candidates),
-                "entities": graph.get("entities", 0),
-                "relations": graph.get("relations", 0),
-            },
-        )
-
-        sources = _list(self.data.get("data_sources"))
-        mappings = _list(self.data.get("field_mappings"))
-        readiness = {
-            _readiness_status(m.get("status") or m.get("readiness"))
-            for m in mappings if isinstance(m, dict)
+        claims = [
+            item for item in _list(self.data.get("claims"))
+            if _active(item) and item.get("stage") == "discovery"
+            and _meaningful_text(item, "text") and not _has_merge_conflicts(item)
+        ]
+        valid_story_ids = {
+            str(story.get("id")) for story in high_stories if story.get("id")
         }
-        gates["data_grounding"] = _gate(
-            len(sources) > 0 and len(mappings) > 0,
-            missing=[
-                *([] if sources else ["data source"]),
-                *([] if mappings else ["field mapping"]),
-            ],
-            evidence={
-                "data_sources": len(sources),
-                "field_mappings": len(mappings),
-                "readiness": sorted(readiness),
-            },
-        )
+        linked_claims = [
+            item for item in claims
+            if bool(_ids(item, "story_id", "story_ids") & valid_story_ids)
+        ]
+        defined_terms = [
+            item for item in claims
+            if _status(item) == "confirmed"
+            and (_dict(item.get("definitions")) or _list(item.get("terms"))
+                 or _list(item.get("glossary")))
+        ]
+        term_decisions = [
+            item for collection in ("decisions", "review_findings")
+            for item in _list(self.data.get(collection))
+            if _active(item) and item.get("stage") == "discovery"
+            and item.get("category") in {"terminology", "ambiguity"}
+            and _status(item) in {"confirmed", "accepted", "resolved", "rejected"}
+        ]
+        terms_reviewed = bool(defined_terms or term_decisions)
+        gates["discovery"] = _quality_gate([
+            _check("discovery.narrative", bool(claims), "a discovery-stage domain narrative"),
+            _check("discovery.goal_link", bool(linked_claims),
+                   "a narrative explicitly linked to a priority story"),
+            _check("discovery.terms", terms_reviewed,
+                   "confirmed terms or an explicitly resolved ambiguity decision"),
+        ], {"narrative_claims": len(claims), "linked_claims": len(linked_claims)})
 
-        review_count = (
-            len(_list(self.data.get("review_findings")))
-            + len(_list(self.data.get("assumptions")))
-            + len(_list(self.data.get("risks")))
+        events = [item for item in _list(self.data.get("domain_events")) if _active(item)]
+        complete_events = [
+            item for item in events
+            if not _has_merge_conflicts(item)
+            and _meaningful_text(item, "name", "text")
+            and _meaningful_text(item, "trigger")
+            and _meaningful_text(item, "state_change")
+            and _event_modeling_class(
+                item.get("modeling_decision") or item.get("classification")
+                or item.get("modeled_as"))
+        ]
+        incomplete_events = [
+            item for item in events if item not in complete_events
+        ]
+        no_event_rationale = any(
+            _active(item) and item.get("stage") == "event_discovery"
+            and _has_text(item, "no_event_rationale", "rationale")
+            for item in _list(self.data.get("decisions"))
         )
-        gates["adversarial_review"] = _gate(
-            review_count > 0,
-            missing=[] if review_count else ["review findings, assumptions, or risks"],
-            evidence={
-                "review_findings": len(_list(self.data.get("review_findings"))),
-                "assumptions": len(_list(self.data.get("assumptions"))),
-                "risks": len(_list(self.data.get("risks"))),
-            },
-        )
+        unresolved_event = [
+            item for item in _list(self.data.get("review_findings"))
+            if _active(item) and item.get("category") == "event_modeling"
+            and _status(item) in _PENDING_REVIEW_STATUSES
+        ]
+        gates["event_discovery"] = _quality_gate([
+            _check("event.events", (bool(complete_events)
+                   and not incomplete_events) or (not events and no_event_rationale),
+                   "trigger, state change, and node/relation/property classification for every captured event, or an explicit no-event rationale"),
+            _check("event.semantics", not unresolved_event,
+                   "resolution of open event-modeling semantics",
+                   {"open_finding_ids": [i.get("id") for i in unresolved_event]}),
+        ], {"events": len(events), "complete_events": len(complete_events),
+            "no_event_rationale": no_event_rationale})
 
-        action_items = _list(self.data.get("action_items"))
-        open_action_items = [
+        questions = [
+            item for item in _list(self.data.get("competency_questions")) if _active(item)
+        ]
+        high_questions = [item for item in questions if _high_priority(item)]
+        story_ids = {str(item.get("id")) for item in high_stories if item.get("id")}
+        complete_questions = [
+            item for item in high_questions
+            if not _has_merge_conflicts(item)
+            and _meaningful_text(item, "question", "text")
+            and bool(_meaningful_values(
+                item.get("expected_answer_shape") or item.get("answer_shape")))
+            and bool(_ids(item, "story_id", "story_ids", "user_story_id") & story_ids)
+        ]
+        covered_story_ids = set().union(*[
+            _ids(q, "story_id", "story_ids", "user_story_id") for q in complete_questions
+        ]) if complete_questions else set()
+        prioritized_questions = [
+            item for item in questions
+            if str(item.get("priority") or "").lower() in {
+                "high", "medium", "low", "critical", "p0", "p1", "p2", "p3"
+            }
+        ]
+        gates["story_to_question"] = _quality_gate([
+            _check("question.priority", bool(high_questions),
+                   "at least one high-priority competency question"),
+            _check("question.answer_shape", len(complete_questions) == len(high_questions) and bool(high_questions),
+                   "an expected answer shape and story link for every high-priority question"),
+            _check("question.prioritization", len(prioritized_questions) == len(questions)
+                   and bool(questions),
+                   "an explicit workshop priority for every competency question"),
+            _check("question.story_coverage", bool(story_ids) and story_ids <= covered_story_ids,
+                   "competency-question coverage for every high-priority story",
+                   {"uncovered_story_ids": sorted(story_ids - covered_story_ids)}),
+        ], {"questions": len(questions), "high_priority": len(high_questions),
+            "complete": len(complete_questions)})
+
+        candidates = [item for item in _list(self.data.get("model_candidates")) if _active(item)]
+        linked_candidates = [
+            item for item in candidates
+            if _candidate_has_valid_link(item, self.data)
+        ]
+        model_names = {str(item.get("name")) for item in candidates if item.get("name")}
+        candidate_entity_names = {
+            str(item.get("name")) for item in candidates
+            if str(item.get("kind") or "").lower() in {
+                "entity", "event", "event_node"
+            } and item.get("name")
+        }
+        candidate_relation_names = {
+            str(item.get("name")) for item in candidates
+            if str(item.get("kind") or "").lower() == "relation"
+            and item.get("name")
+        }
+        expected_names = {
+            str(name) for question in high_questions
+            for name in _list(question.get("expected_answer_shape") or question.get("answer_shape"))
+            if name
+        }
+        graph_has_model = int(graph.get("entities") or 0) > 0 and int(graph.get("relations") or 0) > 0
+        graph_names = {str(name) for name in ctx.get("entity_names") or []}
+        graph_relation_names = {str(name) for name in ctx.get("relation_names") or []}
+        tbox = _dict(ctx.get("tbox"))
+        tbox_entities = _dict(tbox.get("entities"))
+        tbox_relations = _dict(tbox.get("relations"))
+        uncovered_shape = expected_names - (model_names | graph_names)
+        untraced_graph_entities = graph_names - candidate_entity_names
+        untraced_graph_relations = graph_relation_names - candidate_relation_names
+        untraced_graph_types = untraced_graph_entities | untraced_graph_relations
+        naming_conflicts = [item for item in candidates if _has_merge_conflicts(item)]
+        incomplete_relations = [
+            item for item in candidates
+            if str(item.get("kind") or "").lower() == "relation"
+            and not (_has_text(item, "src", "source_type")
+                     and _has_text(item, "dst", "target_type"))
+        ]
+        known_entity_names = graph_names | {
+            str(item.get("name")) for item in candidates
+            if str(item.get("kind") or "").lower() in {
+                "entity", "event", "event_node"
+            } and item.get("name")
+        }
+        invalid_relation_endpoints = []
+        for item in candidates:
+            if str(item.get("kind") or "").lower() != "relation":
+                continue
+            src = str(item.get("src") or item.get("source_type") or "")
+            dst = str(item.get("dst") or item.get("target_type") or "")
+            actual = _dict(tbox_relations.get(str(item.get("name") or "")))
+            if (src not in known_entity_names or dst not in known_entity_names
+                    or actual and (
+                        str(actual.get("src") or "") != src
+                        or str(actual.get("dst") or "") != dst
+                    )):
+                invalid_relation_endpoints.append(item)
+        question_patterns = []
+        for question in high_questions:
+            question_id = str(question.get("id") or "")
+            expected = _meaningful_values(
+                question.get("expected_answer_shape")
+                or question.get("answer_shape"))
+            expected_normalized = {_norm_value(name) for name in expected}
+            linked = [
+                item for item in candidates
+                if question_id
+                and question_id in _ids(item, "question_id", "question_ids")
+            ]
+            linked_by_name: dict[str, list[dict[str, Any]]] = {}
+            for item in linked:
+                if _meaningful_text(item, "name"):
+                    linked_by_name.setdefault(
+                        _norm_value(item.get("name")), []).append(item)
+            linked_entity_names = {
+                _norm_value(item.get("name"))
+                for item in linked
+                if str(item.get("kind") or "").lower() in {
+                    "entity", "event", "event_node"
+                } and _meaningful_text(item, "name")
+            }
+            linked_relations = [
+                item for item in linked
+                if str(item.get("kind") or "").lower() == "relation"
+                and _norm_value(
+                    item.get("src") or item.get("source_type"))
+                in linked_entity_names
+                and _norm_value(
+                    item.get("dst") or item.get("target_type"))
+                in linked_entity_names
+            ]
+            missing = [
+                name for name in expected
+                if not any(
+                    _candidate_matches_tbox_kind(
+                        item, name, tbox_entities, tbox_relations)
+                    for item in linked_by_name.get(_norm_value(name), [])
+                )
+            ]
+            relation_required = len(expected) >= 2
+            pattern_adjacency: dict[str, set[str]] = {}
+            for relation in linked_relations:
+                relation_name = _norm_value(relation.get("name"))
+                src = _norm_value(
+                    relation.get("src") or relation.get("source_type"))
+                dst = _norm_value(
+                    relation.get("dst") or relation.get("target_type"))
+                pattern_adjacency.setdefault(src, set()).add(dst)
+                pattern_adjacency.setdefault(dst, set()).add(src)
+                if relation_name:
+                    pattern_adjacency.setdefault(relation_name, set()).update(
+                        {src, dst})
+                    pattern_adjacency.setdefault(src, set()).add(relation_name)
+                    pattern_adjacency.setdefault(dst, set()).add(relation_name)
+            connected_names = _connected_names(
+                expected_normalized, pattern_adjacency,
+                _norm_value(expected[0]) if expected else "")
+            disconnected = [
+                name for name in expected
+                if _norm_value(name) not in connected_names
+            ]
+            relation_pattern_ok = (
+                not relation_required
+                or bool(linked_relations)
+                and not disconnected
+            )
+            question_patterns.append({
+                "question_id": question_id,
+                "expected_elements": expected,
+                "linked_candidate_ids": [
+                    item.get("id") for item in linked if item.get("id")
+                ],
+                "missing_elements": missing,
+                "relation_required": relation_required,
+                "disconnected_elements": disconnected,
+                "linked_relation_ids": [
+                    item.get("id") for item in linked_relations if item.get("id")
+                ],
+                "status": "pass" if (
+                    question_id and expected and not missing
+                    and relation_pattern_ok
+                ) else "fail",
+            })
+        invalid_question_patterns = [
+            pattern for pattern in question_patterns
+            if pattern["status"] != "pass"
+        ]
+        duplicate_pairs = [
+            (left, right)
+            for index, left in enumerate(candidates)
+            for right in candidates[index + 1:]
+            if _similar_model_names(left.get("name"), right.get("name"))
+        ]
+        unresolved_duplicates = [
+            (left, right) for left, right in duplicate_pairs
+            if not _duplicate_pair_reviewed(
+                left, right, self.data.get("review_findings"),
+                self.data.get("action_items"))
+        ]
+        gates["model_synthesis"] = _quality_gate([
+            _check("model.structure", bool(candidates) and graph_has_model,
+                   "candidate model elements plus a non-empty T-Box with entities and relations"),
+            _check("model.relations", not incomplete_relations,
+                   "source and target types for every relation candidate",
+                   {"incomplete_relation_ids": [i.get("id") for i in incomplete_relations]}),
+            _check("model.relation_endpoints", not invalid_relation_endpoints,
+                   "relation endpoints that reference known entities and match the current T-Box",
+                   {"invalid_relation_ids": [
+                       item.get("id") for item in invalid_relation_endpoints
+                   ]}),
+            _check("model.traceability", len(linked_candidates) == len(candidates) and bool(candidates),
+                   "a story, event, question, or data-source link for every model candidate"),
+            _check("model.graph_traceability", not untraced_graph_types and graph_has_model,
+                   "a traceable, kind-compatible model candidate for every T-Box entity and relation",
+                   {"untraced_tbox_entities": sorted(untraced_graph_entities),
+                    "untraced_tbox_relations": sorted(untraced_graph_relations)}),
+            _check("model.question_coverage", not uncovered_shape and bool(expected_names),
+                   "candidate model coverage for every expected answer-shape element",
+                   {"uncovered_elements": sorted(uncovered_shape)}),
+            _check("model.question_patterns",
+                   bool(question_patterns) and not invalid_question_patterns,
+                   "a question-linked candidate graph pattern for every high-priority question",
+                   {"questions": question_patterns}),
+            _check("model.naming", not naming_conflicts,
+                   "explicit resolution of duplicate or naming conflicts",
+                   {"conflict_ids": [item.get("id") for item in naming_conflicts]}),
+            _check("model.duplicates", not unresolved_duplicates,
+                   "explicit review of every similar or duplicate model concept",
+                   {"unreviewed_pairs": [
+                       [left.get("id"), right.get("id")]
+                       for left, right in unresolved_duplicates
+                   ]}),
+        ], {"model_candidates": len(candidates), "linked": len(linked_candidates),
+            "entities": graph.get("entities", 0), "relations": graph.get("relations", 0)})
+
+        sources = [item for item in _list(self.data.get("data_sources")) if _active(item)]
+        mappings = [item for item in _list(self.data.get("field_mappings")) if _active(item)]
+        source_names = {str(item.get("name")) for item in sources if item.get("name")}
+        source_fields = {
+            str(item.get("name")): {
+                str(field) for field in _dict(item.get("fields"))
+            }
+            for item in sources if item.get("name")
+        }
+        valid_mapping_targets = model_names | graph_names | graph_relation_names
+        target_properties: dict[str, set[str]] = {}
+        for name, definition in {**tbox_entities, **tbox_relations}.items():
+            target_properties[str(name)] = {
+                str(prop) for prop in _dict(_dict(definition).get("properties"))
+            }
+        for candidate in candidates:
+            if candidate.get("name") and isinstance(candidate.get("properties"), dict):
+                target_properties.setdefault(str(candidate["name"]), set()).update(
+                    str(prop) for prop in candidate["properties"]
+                )
+        actionable_statuses = {"available", "partial", "missing", "derived", "unknown"}
+        well_formed_mappings = [
+            item for item in mappings
+            if not _has_merge_conflicts(item)
+            and _has_text(item, "source") and _has_text(item, "source_field")
+            and str(item.get("source")) in source_names
+            and (not source_fields.get(str(item.get("source")))
+                 or str(item.get("source_field")) in source_fields[
+                     str(item.get("source"))])
+            and _has_text(item, "target") and not str(item.get("target", "")).startswith("TBD.")
+            and _mapping_target_valid(
+                item.get("target"), valid_mapping_targets, target_properties)
+            and _readiness_status(item.get("status") or item.get("readiness")) in actionable_statuses
+        ]
+        unresolved_mappings = [
+            item for item in mappings
+            if _readiness_status(item.get("status") or item.get("readiness")) in {"missing", "unknown"}
+        ]
+        mapping_actions = [
+            item for item in _list(self.data.get("action_items"))
+            if _active(item) and not _has_merge_conflicts(item)
+            and _meaningful_text(item, "owner")
+            and _meaningful_text(item, "text", "title", "description")
+            and _status(item) in {"open", "accepted", "confirmed", "in_progress"}
+        ]
+        mapped_action_ids = set().union(*[
+            _ids(item, "mapping_id", "mapping_ids", "target_id", "target_ids")
+            for item in mapping_actions
+        ]) if mapping_actions else set()
+        unresolved_without_action = [
+            item for item in unresolved_mappings if str(item.get("id")) not in mapped_action_ids
+        ]
+        mapped_targets = {
+            str(item.get("target") or "").split(".", 1)[0]
+            for item in mappings if item.get("target")
+        }
+        uncovered_model_data = expected_names - mapped_targets
+        source_quality = all(
+            not _has_merge_conflicts(item)
+            and _meaningful_text(item, "owner")
+            and _meaningful_text(item, "freshness")
+            for item in sources
+        ) if sources else False
+        gates["data_grounding"] = _quality_gate([
+            _check("data.sources", bool(sources), "at least one identified data source"),
+            _check("data.mappings", len(well_formed_mappings) == len(mappings) and bool(mappings),
+                   "source, field, concrete target, and readiness status for every mapping"),
+            _check("data.source_metadata", source_quality,
+                   "owner and freshness metadata for each data source"),
+            _check("data.model_coverage", not uncovered_model_data and bool(expected_names),
+                   "a readiness mapping for every high-priority answer-shape model element",
+                   {"unmapped_elements": sorted(uncovered_model_data)}),
+            _check("data.gap_actions", not unresolved_without_action,
+                   "a linked action item for every missing or unknown mapping",
+                   {"mapping_ids_without_action": [item.get("id") for item in unresolved_without_action]}),
+        ], {"data_sources": len(sources), "field_mappings": len(mappings),
+            "well_formed_mappings": len(well_formed_mappings)})
+
+        review_items = [
+            item for collection in ("review_findings", "assumptions", "contradictions", "risks")
+            for item in _list(self.data.get(collection)) if _active(item)
+        ]
+        pending_critical = [
+            item for item in review_items
+            if str(item.get("severity") or "").lower() == "critical"
+            and _status(item) not in {"resolved", "rejected", "out_of_scope"}
+        ]
+        pending_high = [
+            item for item in review_items
+            if str(item.get("severity") or "").lower() == "high"
+            and not _review_item_disposed(item, self.data.get("action_items"))
+        ]
+        pending_automatic = [
+            item for item in review_items
+            if item.get("source") == "automatic_adversarial_review"
+            and not _review_item_disposed(item, self.data.get("action_items"))
+        ]
+        review_runs = _list(self.data.get("review_runs"))
+        latest_review = _dict(review_runs[-1]) if review_runs else {}
+        assessed = set(latest_review.get("categories_assessed") or [])
+        review_current = bool(latest_review) and latest_review.get(
+            "source_fingerprint") == _review_source_fingerprint(self.data, ctx)
+        material_review = int(latest_review.get("reviewed_evidence_count") or 0) > 0
+        gates["adversarial_review"] = _quality_gate([
+            _check("review.executed", bool(latest_review) and material_review,
+                   "an explicit adversarial review run over material workshop evidence"),
+            _check("review.freshness", review_current,
+                   "an adversarial review current with the latest workshop evidence"),
+            _check("review.coverage", REVIEW_CATEGORIES <= assessed,
+                   "review coverage for ambiguity, contradiction, causality, event modeling, over-modeling, and sensitivity",
+                   {"missing_categories": sorted(REVIEW_CATEGORIES - assessed)}),
+            _check("review.critical", not pending_critical,
+                   "resolution or explicit rejection of every critical contradiction/finding/risk",
+                   {"open_ids": [item.get("id") for item in pending_critical]}),
+            _check("review.high", not pending_high,
+                   "acceptance as an owned action, resolution, or rejection of every high-severity review item",
+                   {"open_ids": [item.get("id") for item in pending_high]}),
+            _check("review.decisions", not pending_automatic,
+                   "an explicit accept, reject, or resolve decision for every automatically generated review item",
+                   {"open_ids": [item.get("id") for item in pending_automatic]}),
+        ], {"review_items": len(review_items), "review_runs": len(review_runs),
+            "pending_critical": len(pending_critical), "pending_high": len(pending_high),
+            "pending_automatic": len(pending_automatic)})
+
+        current_source_fingerprint = ctx.get("query_source_fingerprint")
+        verified_question_ids = _verified_question_ids(
+            self.data.get("validation_queries"), high_questions,
+            current_source_fingerprint)
+        high_question_ids = {str(q.get("id")) for q in high_questions if q.get("id")}
+        unverified_question_ids = high_question_ids - verified_question_ids
+        action_items = [item for item in _list(self.data.get("action_items")) if _active(item)]
+        owned_actions = [
             item for item in action_items
-            if isinstance(item, dict) and item.get("status") != "resolved"
+            if not _has_merge_conflicts(item)
+            and _meaningful_text(item, "owner")
+            and _meaningful_text(item, "text", "title", "description")
+            and _status(item) in {"open", "accepted", "confirmed", "in_progress"}
         ]
         last_validation = _dict(self.data.get("last_validation"))
         validation_freshness = self._validation_freshness(ctx)
-        has_open_validation_action = any(
-            isinstance(item, dict)
-            and item.get("source") == "static_handoff_validation"
-            and item.get("status") != "resolved"
-            for item in open_action_items
-        )
+        validation_requested = bool(last_validation)
         static_validation_ok = (
-            not last_validation
-            or last_validation.get("status") in {"pass", "warning"}
-            and validation_freshness != "stale"
+            not validation_requested
+            or last_validation.get("status") == "pass"
+            and validation_freshness == "current"
+            and int(graph.get("entities") or 0) > 0
+            and int(graph.get("relations") or 0) > 0
         )
-        gates["validation_handoff"] = _gate(
-            verified_count > 0 and len(action_items) > 0 and static_validation_ok
-            and not has_open_validation_action,
-            missing=[
-                *([] if verified_count else ["verified query"]),
-                *([] if action_items else ["handoff action item"]),
-                *([] if not has_open_validation_action
-                   else ["unresolved RDF validation action"]),
-                *([] if static_validation_ok else [
-                    "current RDF static validation"
-                    if validation_freshness == "stale"
-                    else "RDF static validation failures"
-                ]),
-            ],
-            evidence={
-                "verified_queries": verified_count,
-                "action_items": len(action_items),
-                "open_action_items": len(open_action_items),
-                "open_rdf_validation_action": has_open_validation_action,
-                "rdf_static_validation": last_validation.get("status", "not_run"),
-                "rdf_validation_freshness": validation_freshness,
-            },
+        open_validation_actions = [
+            item for item in action_items
+            if item.get("source") == "static_handoff_validation"
+            and _status(item) not in _TERMINAL_REVIEW_STATUSES
+        ]
+        manifest = _dict(self.data.get("handoff_manifest"))
+        validation_bundle_aligned = (
+            not validation_requested
+            or bool(manifest.get("rdf_source_fingerprint"))
+            and manifest.get("rdf_source_fingerprint")
+            == last_validation.get("source_fingerprint")
         )
+        current_handoff_fingerprint = ctx.get("handoff_source_fingerprint")
+        manifest_freshness = (
+            "not_generated" if not manifest
+            else "current" if manifest.get("source_fingerprint")
+            and manifest.get("source_fingerprint") == current_handoff_fingerprint
+            else "stale"
+        )
+        manifest_artifacts = _dict(manifest.get("artifacts"))
+        missing_manifest_artifacts = sorted(
+            key for key in REQUIRED_HANDOFF_ARTIFACTS
+            if not manifest_artifacts.get(key)
+        )
+        manifest_files_valid = bool(ctx.get("handoff_manifest_files_valid", True))
+        transition_history = _list(self.data.get("transition_history"))
+        sequential_arrival = _sequential_arrival_complete(
+            self.data.get("current_stage"), transition_history)
+        gates["validation_handoff"] = _quality_gate([
+            _check("handoff.stage",
+                   sequential_arrival,
+                   "sequential arrival at the Validation and Handoff stage",
+                   {"current_stage": self.data.get("current_stage"),
+                    "transition_count": len(transition_history),
+                    "expected_transition_count": len(STAGES) - 1}),
+            _check("handoff.prior_gates", all(
+                gates[name]["status"] == "pass" for name in STAGES[:-1]),
+                "successful completion of every preceding workshop gate",
+                {"incomplete_gates": [
+                    name for name in STAGES[:-1]
+                    if gates[name]["status"] != "pass"
+                ]}),
+            _check("handoff.model", int(graph.get("entities") or 0) > 0
+                   and int(graph.get("relations") or 0) > 0,
+                   "a non-empty current T-Box for handoff"),
+            _check("handoff.query_coverage", bool(high_question_ids) and not unverified_question_ids,
+                   "successful matching openCypher execution evidence for every high-priority competency question",
+                   {"unverified_question_ids": sorted(unverified_question_ids)}),
+            _check("handoff.actions", bool(owned_actions),
+                   "at least one owner-tagged handoff action item"),
+            _check("handoff.artifacts", manifest.get("status") == "complete"
+                   and manifest_freshness == "current"
+                   and not missing_manifest_artifacts and manifest_files_valid,
+                   "a current generated report, snapshot, Neptune package, and RDF handoff bundle",
+                   {"status": manifest.get("status", "not_generated"),
+                    "freshness": manifest_freshness,
+                    "missing_artifacts": missing_manifest_artifacts,
+                    "files_valid": manifest_files_valid}),
+            _check("handoff.static_validation", static_validation_ok
+                   and validation_bundle_aligned,
+                   "a current PASS static validation of the same RDF inputs packaged for handoff when validation was requested; warnings, base-IRI drift, and empty models do not qualify",
+                   {"requested": validation_requested,
+                    "status": last_validation.get("status", "not_run"),
+                    "freshness": validation_freshness,
+                    "validated_source_fingerprint": last_validation.get(
+                        "source_fingerprint"),
+                    "packaged_rdf_source_fingerprint": manifest.get(
+                        "rdf_source_fingerprint"),
+                    "bundle_aligned": validation_bundle_aligned}),
+            _check("handoff.validation_actions", not open_validation_actions,
+                   "resolution of RDF static-validation failure actions",
+                   {"open_action_ids": [item.get("id") for item in open_validation_actions]}),
+        ], {"high_priority_questions": len(high_question_ids),
+            "verified_question_ids": sorted(verified_question_ids),
+            "verification_source_fingerprint": current_source_fingerprint,
+            "owned_action_items": len(owned_actions),
+            "handoff_manifest_freshness": manifest_freshness,
+            "handoff_source_fingerprint": current_handoff_fingerprint,
+            "rdf_static_validation": last_validation.get("status", "not_run"),
+            "sparql_executed": False, "shacl_engine_executed": False})
         return gates
 
 
-def _gate(ok: bool, missing: list[str],
-          evidence: dict[str, Any] | None = None) -> dict[str, Any]:
-    status = "pass" if ok else ("partial" if evidence and any(evidence.values()) else "fail")
-    return {"status": status, "missing": missing, "evidence": evidence or {}}
+def _check(check_id: str, passed: bool, requirement: str,
+           evidence: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "id": check_id,
+        "status": "pass" if passed else "fail",
+        "requirement": requirement,
+        "evidence": evidence or {},
+    }
+
+
+def _quality_gate(checks: list[dict[str, Any]],
+                  evidence: dict[str, Any] | None = None) -> dict[str, Any]:
+    missing = [
+        str(check.get("requirement")) for check in checks
+        if check.get("status") != "pass"
+    ]
+    passed = len(checks) - len(missing)
+    status = "pass" if not missing else ("partial" if passed else "fail")
+    return {
+        "status": status,
+        "missing": missing,
+        "evidence": evidence or {},
+        "checks": checks,
+    }
+
+
+def _sequential_arrival_complete(current_stage: Any, history: Any) -> bool:
+    """Prove the canonical stage chain, including audited forced next steps."""
+    if current_stage != STAGES[-1]:
+        return False
+    transitions = _list(history)
+    if len(transitions) != len(STAGES) - 1:
+        return False
+    for index, transition in enumerate(transitions):
+        if not isinstance(transition, dict):
+            return False
+        if (transition.get("from") != STAGES[index]
+                or transition.get("to") != STAGES[index + 1]
+                or not _meaningful_text(transition, "actor")
+                or not _meaningful_text(transition, "at")):
+            return False
+        if transition.get("forced") and not _meaningful_text(
+                transition, "reason"):
+            return False
+    return True
+
+
+def _candidate_has_link(item: dict[str, Any]) -> bool:
+    return bool(_ids(
+        item, "story_id", "story_ids", "event_id", "event_ids",
+        "question_id", "question_ids", "data_source_id", "data_source_ids",
+    ))
+
+
+def _mapping_target_valid(target: Any, valid_names: set[str],
+                          properties: dict[str, set[str]]) -> bool:
+    value = str(target or "").strip()
+    if not value or value.startswith("TBD."):
+        return False
+    parts = value.split(".", 1)
+    if parts[0] not in valid_names:
+        return False
+    if len(parts) == 1:
+        return True
+    return parts[0] not in properties or parts[1] in properties[parts[0]]
+
+
+def _candidate_has_valid_link(item: dict[str, Any], state: dict[str, Any]) -> bool:
+    references = {
+        "story": (_ids(item, "story_id", "story_ids"), "user_stories"),
+        "event": (_ids(item, "event_id", "event_ids"), "domain_events"),
+        "question": (_ids(item, "question_id", "question_ids"),
+                     "competency_questions"),
+        "data": (_ids(item, "data_source_id", "data_source_ids"), "data_sources"),
+    }
+    for ids, collection in references.values():
+        existing = {
+            str(value.get("id")) for value in _list(state.get(collection))
+            if _active(value) and value.get("id")
+        }
+        if ids & existing:
+            return True
+    return False
+
+
+def _candidate_matches_tbox_kind(item: dict[str, Any], name: str,
+                                 tbox_entities: dict[str, Any],
+                                 tbox_relations: dict[str, Any]) -> bool:
+    """Require a question-linked candidate to match the current T-Box kind."""
+    kind = str(item.get("kind") or "").lower()
+    normalized = _norm_value(name)
+    if normalized in {_norm_value(value) for value in tbox_entities}:
+        return kind in {"entity", "event", "event_node"}
+    if normalized in {_norm_value(value) for value in tbox_relations}:
+        return kind == "relation"
+    return kind in {"entity", "event", "event_node", "relation"}
+
+
+def _connected_names(required: set[str], adjacency: dict[str, set[str]],
+                     start: str = "") -> set[str]:
+    """Return required model names reachable in one relation pattern component."""
+    if not required:
+        return set()
+    start = start if start in required else sorted(required)[0]
+    visited: set[str] = set()
+    pending = [start]
+    while pending:
+        current = pending.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        pending.extend(adjacency.get(current, set()) - visited)
+    return required & visited
+
+
+def _review_item_disposed(item: dict[str, Any], action_items: Any) -> bool:
+    if _status(item) in {"resolved", "rejected", "out_of_scope"}:
+        return True
+    if _status(item) not in {"accepted", "confirmed"}:
+        return False
+    severity = str(item.get("severity") or "").lower()
+    if severity == "critical":
+        return False
+    if severity not in {"high", "critical"}:
+        return True
+    if _status(item) == "confirmed":
+        return False
+    linked = _ids(item, "linked_action_id", "linked_action_ids")
+    return any(
+        isinstance(action, dict) and str(action.get("id")) in linked
+        and not _has_merge_conflicts(action)
+        and _meaningful_text(action, "owner")
+        and _meaningful_text(action, "text", "title", "description")
+        and _status(action) not in {"rejected", "out_of_scope"}
+        for action in _list(action_items)
+    )
+
+
+def _review_evidence_count(state: dict[str, Any]) -> int:
+    return sum(
+        len(_list(state.get(collection)))
+        for collection in (
+            "claims", "user_stories", "domain_events", "competency_questions",
+            "model_candidates", "data_sources", "field_mappings",
+        )
+    )
+
+
+def _review_source_fingerprint(state: dict[str, Any],
+                               context: dict[str, Any] | None = None) -> str:
+    payload = {
+        collection: [
+            {
+                key: value for key, value in item.items()
+                if key not in {
+                    "history", "created_at", "updated_at",
+                    *_VIEW_ONLY_ITEM_FIELDS,
+                }
+            }
+            for item in _list(state.get(collection)) if isinstance(item, dict)
+        ]
+        for collection in (
+            "claims", "user_stories", "domain_events", "competency_questions",
+            "model_candidates", "data_sources", "field_mappings",
+        )
+    }
+    ctx = context or {}
+    payload["graph"] = {
+        "summary": _dict(ctx.get("graph")),
+        "entity_names": sorted(str(value) for value in ctx.get("entity_names") or []),
+        "relation_names": sorted(str(value) for value in ctx.get("relation_names") or []),
+        "schema": _dict(ctx.get("tbox")),
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _handoff_source_fingerprint(state: dict[str, Any],
+                                graph_fingerprint: str = "") -> str:
+    payload = {
+        "graph_fingerprint": graph_fingerprint or "",
+        "version": state.get("version"),
+        "current_stage": state.get("current_stage"),
+        "language": state.get("language"),
+        "scope": state.get("scope"),
+    }
+    payload.update({
+        collection: [
+            {
+                key: value for key, value in item.items()
+                if key not in {"history", "created_at", "updated_at"}
+            }
+            for item in _list(state.get(collection)) if isinstance(item, dict)
+        ]
+        for collection in WORKFLOW_COLLECTIONS
+    })
+    payload["last_validation"] = {
+        key: copy.deepcopy(value)
+        for key, value in _dict(state.get("last_validation")).items()
+        if key not in _VIEW_ONLY_VALIDATION_FIELDS
+    }
+    payload["review_runs"] = copy.deepcopy(_list(state.get("review_runs")))
+    payload["transition_history"] = copy.deepcopy(
+        _list(state.get("transition_history")))
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _query_source_fingerprint(tbox: Any, snapshot: Any,
+                              state: dict[str, Any]) -> str:
+    snap = _dict(snapshot)
+    payload = {
+        "tbox": _dict(tbox),
+        "snapshot": {
+            "nodes": _list(snap.get("nodes")),
+            "edges": _list(snap.get("edges")),
+        },
+        "competency_questions": [
+            {
+                key: value for key, value in item.items()
+                if key in {
+                    "id", "question", "text", "expected_answer_shape",
+                    "answer_shape", "priority", "story_id", "story_ids",
+                }
+            }
+            for item in _list(state.get("competency_questions"))
+            if isinstance(item, dict)
+        ],
+        "open_cypher_queries": [
+            {
+                key: value for key, value in item.items()
+                if key in {"id", "question_id", "question", "language", "query"}
+            }
+            for item in _list(state.get("validation_queries"))
+            if isinstance(item, dict)
+            and str(item.get("language") or "").lower() == "opencypher"
+        ],
+        "model_candidates": [
+            {
+                key: value for key, value in item.items()
+                if key in {
+                    "id", "kind", "name", "src", "dst", "source_type",
+                    "target_type", "properties", "primary_key", "status",
+                    "question_id", "question_ids", "story_id", "story_ids",
+                    "event_id", "event_ids", "data_source_id", "data_source_ids",
+                }
+            }
+            for item in _list(state.get("model_candidates"))
+            if isinstance(item, dict)
+        ],
+        "data_sources": [
+            {
+                key: value for key, value in item.items()
+                if key in {
+                    "id", "name", "type", "fields", "owner", "freshness",
+                    "status", "sensitivity",
+                }
+            }
+            for item in _list(state.get("data_sources"))
+            if isinstance(item, dict)
+        ],
+        "field_mappings": [
+            {
+                key: value for key, value in item.items()
+                if key in {
+                    "id", "source", "source_field", "target", "status",
+                    "readiness",
+                }
+            }
+            for item in _list(state.get("field_mappings"))
+            if isinstance(item, dict)
+        ],
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _candidate_question_links(item: dict[str, Any], questions: Any) -> list[str]:
+    name = str(item.get("name") or "").strip().lower()
+    if not name:
+        return []
+    linked = []
+    for question in _list(questions):
+        if not _active(question) or not question.get("id"):
+            continue
+        shape = {
+            str(value).strip().lower()
+            for value in _list(question.get("expected_answer_shape") or question.get("answer_shape"))
+        }
+        if name in shape:
+            linked.append(str(question["id"]))
+    return linked
+
+
+def _verified_question_ids(validation_queries: Any,
+                           high_questions: list[dict[str, Any]],
+                           current_source_fingerprint: Any = None) -> set[str]:
+    high_ids = {str(item.get("id")) for item in high_questions if item.get("id")}
+    verified: set[str] = set()
+    for query in _list(validation_queries):
+        if not isinstance(query, dict):
+            continue
+        if str(query.get("language") or "").strip().lower() != "opencypher":
+            continue
+        question_id = str(query.get("question_id") or "")
+        if question_id not in high_ids or _status(query) != "verified":
+            continue
+        question_item = next(
+            (item for item in high_questions
+             if str(item.get("id")) == question_id), None)
+        if (_has_merge_conflicts(query) or question_item is None
+                or not _query_covers_answer_shape(query, question_item)):
+            continue
+        evidence = _list(query.get("verification_evidence"))
+        if any(
+            bool(item.get("ok")) and item.get("query_match") is True
+            and item.get("answer_shape_match") is not False
+            and bool(current_source_fingerprint)
+            and item.get("source_fingerprint") == current_source_fingerprint
+            for item in evidence if isinstance(item, dict)
+        ):
+            verified.add(question_id)
+    return verified
+
+
+def _query_covers_answer_shape(query: dict[str, Any],
+                               question: dict[str, Any]) -> bool:
+    cypher = _strip_cypher_comments_and_strings(str(query.get("query") or ""))
+    if not re.search(r"\bMATCH\b", cypher, re.I) or not re.search(
+            r"\bRETURN\b", cypher, re.I):
+        return False
+    shape = [
+        str(value) for value in _list(
+            question.get("expected_answer_shape") or question.get("answer_shape"))
+        if str(value).strip()
+    ]
+    if not shape:
+        return False
+
+    # A label name appearing anywhere in a query is not answer evidence. Build a
+    # small, deliberately conservative map of MATCH-bound node/relationship
+    # variables and require the variable for every expected label to be returned.
+    # This rejects seeds such as `MATCH (n) WITH n AS Product RETURN 1` and
+    # `MATCH (p:Product) RETURN 1`, without pretending to be a full Cypher parser.
+    label_variables: dict[str, set[str]] = {}
+    for pattern in (r"\(([^()]*)\)", r"\[([^\[\]]*)\]"):
+        for match in re.finditer(pattern, cypher):
+            header = match.group(1).split("{", 1)[0]
+            variable_match = re.match(
+                r"\s*`?([A-Za-z_][A-Za-z0-9_]*)`?", header)
+            variable = variable_match.group(1) if variable_match else ""
+            if not variable or header.lstrip().startswith(":"):
+                continue
+            for label in re.findall(
+                    r":\s*`?([A-Za-z_][A-Za-z0-9_]*)`?", header):
+                label_variables.setdefault(label.lower(), set()).add(
+                    variable.lower())
+
+    return_matches = list(re.finditer(r"\bRETURN\b", cypher, re.I))
+    if not return_matches:
+        return False
+    return_clause = cypher[return_matches[-1].end():]
+    return_clause = re.split(
+        r"\b(?:ORDER\s+BY|SKIP|LIMIT|UNION)\b", return_clause,
+        maxsplit=1, flags=re.I)[0]
+    if re.search(r"(^|,)\s*\*\s*(,|$)", return_clause):
+        returned_variables = {
+            variable for variables in label_variables.values()
+            for variable in variables
+        }
+    else:
+        returned_variables: set[str] = set()
+        for expression in _split_top_level_commas(return_clause):
+            expression = re.sub(
+                r"\bAS\s+`?[A-Za-z_][A-Za-z0-9_]*`?\s*$", "",
+                expression, flags=re.I)
+            returned_variables.update(
+                token.lower() for token in re.findall(
+                    r"`?([A-Za-z_][A-Za-z0-9_]*)`?", expression)
+            )
+
+    covered_variables = {
+        name.lower(): label_variables.get(name.lower(), set()) & returned_variables
+        for name in shape
+    }
+    if not all(covered_variables.values()):
+        return False
+    if len(shape) < 2:
+        return True
+
+    # A comma-separated Cartesian MATCH can return all requested labels without
+    # answering their relationship. Require the returned answer variables to be
+    # part of one explicit relationship pattern. This remains intentionally
+    # conservative; complex seeds can be revised into an auditable connected
+    # pattern instead of being treated as semantically proven by a regex.
+    answer_variables = set().union(*covered_variables.values())
+    adjacency: dict[str, set[str]] = {}
+    relation_pattern = re.compile(
+        r"(?=\(\s*`?([A-Za-z_][A-Za-z0-9_]*)`?[^()]*\)\s*"
+        r"(?:<-|-)\s*\[[^\[\]]*\]\s*(?:->|-)\s*"
+        r"\(\s*`?([A-Za-z_][A-Za-z0-9_]*)`?[^()]*\))",
+        re.I)
+    for match in relation_pattern.finditer(cypher):
+        left, right = match.group(1).lower(), match.group(2).lower()
+        adjacency.setdefault(left, set()).add(right)
+        adjacency.setdefault(right, set()).add(left)
+    return answer_variables <= _reachable_variables(answer_variables, adjacency)
+
+
+def _reachable_variables(required: set[str],
+                         adjacency: dict[str, set[str]]) -> set[str]:
+    if not required:
+        return set()
+    start = next(iter(required))
+    visited: set[str] = set()
+    pending = [start]
+    while pending:
+        current = pending.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        pending.extend(adjacency.get(current, set()) - visited)
+    return visited
+
+
+def _split_top_level_commas(value: str) -> list[str]:
+    """Split a scrubbed expression list without splitting nested function calls."""
+    parts: list[str] = []
+    start = 0
+    depth = 0
+    pairs = {"(": ")", "[": "]", "{": "}"}
+    closers = set(pairs.values())
+    for index, char in enumerate(value):
+        if char in pairs:
+            depth += 1
+        elif char in closers and depth:
+            depth -= 1
+        elif char == "," and depth == 0:
+            parts.append(value[start:index])
+            start = index + 1
+    parts.append(value[start:])
+    return parts
+
+
+def _strip_cypher_comments_and_strings(query: str) -> str:
+    query = re.sub(r"/\*[\s\S]*?\*/", " ", query)
+    query = re.sub(r"//[^\n\r]*|--[^\n\r]*", " ", query)
+    query = re.sub(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"", " ", query)
+    return query
+
+
+def _review_finding(category: str, severity: str, text: str, stage: str,
+                    evidence_ids: list[Any]) -> dict[str, Any]:
+    return {
+        "text": text,
+        "category": category,
+        "severity": severity,
+        "status": "open",
+        "stage": stage,
+        "evidence_ids": [str(value) for value in evidence_ids if value],
+        "source": "automatic_adversarial_review",
+    }
+
+
+def _claims_conflict(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    if _status(left) == "conflicting" or _status(right) == "conflicting":
+        return bool(_ids(left, "conflicts_with", "conflict_ids") & {
+            str(right.get("id"))
+        } or _ids(right, "conflicts_with", "conflict_ids") & {
+            str(left.get("id"))
+        })
+    left_subject = _norm_value(left.get("subject") or left.get("term"))
+    right_subject = _norm_value(right.get("subject") or right.get("term"))
+    left_value = _norm_value(left.get("value") or left.get("definition"))
+    right_value = _norm_value(right.get("value") or right.get("definition"))
+    return bool(
+        left_subject and left_subject == right_subject
+        and left_value and right_value and left_value != right_value
+    )
+
+
+def _similar_model_names(left: Any, right: Any) -> bool:
+    def normalized(value: Any) -> str:
+        raw = re.sub(r"[^a-z0-9]", "", str(value or "").lower())
+        for suffix in ("entity", "record", "object", "data", "type"):
+            if raw.endswith(suffix) and len(raw) > len(suffix) + 2:
+                raw = raw[:-len(suffix)]
+        return raw
+
+    a, b = normalized(left), normalized(right)
+    return bool(a and b and (a == b or (min(len(a), len(b)) >= 5 and (a in b or b in a))))
+
+
+def _duplicate_pair_reviewed(left: dict[str, Any], right: dict[str, Any],
+                             findings: Any, action_items: Any) -> bool:
+    pair = {str(left.get("id")), str(right.get("id"))}
+    for item in [*_list(findings), *_list(action_items)]:
+        if not isinstance(item, dict) or item.get("category") not in {
+            "duplicate", "over_modeling", "naming"
+        }:
+            continue
+        if not pair <= _ids(item, "evidence_id", "evidence_ids", "model_ids"):
+            continue
+        if _review_item_disposed(item, action_items):
+            return True
+    return False
 
 
 def _query_matches(item: dict[str, Any], question: str, cypher: str) -> bool:
-    if question and _norm_value(item.get("question")) == _norm_value(question):
-        return True
-    if cypher and _norm_value(item.get("query")) == _norm_value(cypher):
-        return True
-    return False
+    if not cypher or _norm_query(item.get("query")) != _norm_query(cypher):
+        return False
+    if (not question or not _norm_value(item.get("question"))
+            or _norm_value(item.get("question")) != _norm_value(question)):
+        return False
+    return True
 
 
 def infer_workflow_items(text: str, stage: str,
@@ -1471,7 +3108,20 @@ def _stage_question(stage: str, missing: str, state: dict[str, Any]) -> str:
 def _cypher_seed(question: str, answer_shape: Any = None) -> str:
     shape = [_safe_label(x) for x in _list(answer_shape) if _safe_label(x)]
     if len(shape) >= 2:
-        return f"MATCH (a:{shape[0]})-[r]-(b:{shape[1]}) RETURN a, r, b LIMIT 25"
+        nodes = [f"(n{index}:{label})" for index, label in enumerate(shape)]
+        pattern = nodes[0] + "".join(
+            f"-[r{index}]-{nodes[index + 1]}"
+            for index in range(len(nodes) - 1)
+        )
+        returned = [
+            value
+            for index in range(len(nodes))
+            for value in (
+                ([f"n{index}"] if index == 0 else
+                 [f"r{index - 1}", f"n{index}"])
+            )
+        ]
+        return f"MATCH {pattern} RETURN {', '.join(returned)} LIMIT 25"
     if len(shape) == 1:
         return f"MATCH (n:{shape[0]}) RETURN n LIMIT 25"
     return "MATCH (n) RETURN n LIMIT 25"
@@ -1480,9 +3130,22 @@ def _cypher_seed(question: str, answer_shape: Any = None) -> str:
 def _sparql_seed(question: str, answer_shape: Any = None) -> str:
     shape = [_safe_label(x) for x in _list(answer_shape) if _safe_label(x)]
     if len(shape) >= 2:
+        triples = [f"?n0 a :{shape[0]} ."]
+        for index, label in enumerate(shape[1:], start=1):
+            triples.append(
+                f"?n{index - 1} ?p{index - 1} ?n{index} . "
+                f"?n{index} a :{label} .")
+        selected = [
+            value
+            for index in range(len(shape))
+            for value in (
+                ([f"?n{index}"] if index == 0 else
+                 [f"?p{index - 1}", f"?n{index}"])
+            )
+        ]
         return (
-            f"SELECT ?a ?p ?b WHERE {{ ?a a :{shape[0]} ; ?p ?b . "
-            f"?b a :{shape[1]} . }} LIMIT 25"
+            f"SELECT {' '.join(selected)} WHERE {{ {' '.join(triples)} }} "
+            "LIMIT 25"
         )
     if len(shape) == 1:
         return f"SELECT ?s WHERE {{ ?s a :{shape[0]} . }} LIMIT 25"
@@ -1551,3 +3214,7 @@ def _norm_value(value: Any) -> str:
     if isinstance(value, (list, dict)):
         return json.dumps(value, ensure_ascii=False, sort_keys=True).lower()
     return str(value or "").strip().lower()
+
+
+def _norm_query(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip().rstrip(";").lower()

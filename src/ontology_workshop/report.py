@@ -543,8 +543,15 @@ def ai_odlc_section(workflow: dict | None = None,
     ], limit=10)
     table("Risks and Assumptions", (workflow.get("risks") or [])
           + (workflow.get("assumptions") or []), [
-        ("id", "ID"), ("text", "Text"), ("status", "Status"), ("owner", "Owner"),
+        ("id", "ID"), ("text", "Text"), ("severity", "Severity"),
+        ("status", "Decision status"), ("owner", "Owner"),
     ], limit=10)
+    table("Contradictions and Review Findings",
+          (workflow.get("contradictions") or [])
+          + (workflow.get("review_findings") or []), [
+        ("id", "ID"), ("category", "Category"), ("text", "Finding"),
+        ("severity", "Severity"), ("status", "Decision status"),
+    ], limit=12)
     table("Action Items", workflow.get("action_items") or [], [
         ("id", "ID"), ("text", "Action"), ("owner", "Owner"), ("status", "Status"),
     ], limit=10)
@@ -557,6 +564,7 @@ def ai_odlc_section(workflow: dict | None = None,
     if validation:
         counts = validation.get("counts") or {}
         freshness = validation.get("freshness", "unknown")
+        approval = validation.get("handoff_approval", "not_approved")
         lines += [
             "### Latest RDF Handoff Static Validation",
             "",
@@ -564,6 +572,7 @@ def ai_odlc_section(workflow: dict | None = None,
             f"- Status: **{str(validation.get('status', '-')).upper()}**",
             f"- Validated at: {validation.get('validated_at', '-')}",
             f"- Source freshness: **{freshness}**",
+            f"- Current handoff approval: **{approval}**",
             f"- Validated bundle: {validation.get('bundle_path', '-')}",
             f"- Bundle digest: `{validation.get('bundle_digest', '-')}`",
             (f"- Checks: {counts.get('passed', 0)} passed, "
@@ -574,10 +583,10 @@ def ai_odlc_section(workflow: dict | None = None,
             "",
             "Limitations:",
         ]
-        if freshness == "stale":
+        if freshness == "stale" or approval != "approved":
             lines.append(
-                "- The model or RDF-relevant workflow evidence changed after this run; "
-                "do not treat the result as current handoff approval.")
+                "- Do not treat this result as current handoff approval; the source is "
+                "stale/unknown or its RDF inputs do not match the packaged bundle.")
         for limitation in validation.get("limitations") or []:
             lines.append(f"- {limitation}")
         lines.append("")
@@ -623,6 +632,7 @@ def rdf_handoff_section(workflow: dict | None = None,
     if validation:
         counts = validation.get("counts") or {}
         freshness = validation.get("freshness", "unknown")
+        approval = validation.get("handoff_approval", "not_approved")
         lines += [
             "", "### Validation Evidence Artifacts", "",
             "| Artifact | Purpose |",
@@ -632,15 +642,16 @@ def rdf_handoff_section(workflow: dict | None = None,
             "", "### Latest On-demand Validation", "",
             f"- Status: {validation.get('status', '-')} ({validation.get('scope', '-')})",
             f"- Source freshness: {freshness}",
+            f"- Current handoff approval: {approval}",
             f"- Validated bundle: {validation.get('bundle_path', '-')}",
             (f"- Checks: {counts.get('passed', 0)} passed, "
              f"{counts.get('warnings', 0)} warning(s), "
              f"{counts.get('failed', 0)} failed"),
             "- This was a single static handoff check; SPARQL execution and formal SHACL conformance were not performed.",
         ]
-        if freshness == "stale":
+        if freshness == "stale" or approval != "approved":
             lines.append(
-                "- This result predates relevant model/evidence changes and is not current handoff approval.")
+                "- This result is not current handoff approval because its source is stale/unknown or its RDF inputs differ from the packaged bundle.")
     return "\n".join(lines)
 
 

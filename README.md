@@ -20,6 +20,36 @@ OntoForge is a local workshop tool for building and validating an ontology while
 
 See [`docs/DESIGN.md`](./docs/DESIGN.md), [`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md), [`docs/AI_ODLC_WORKFLOW.md`](./docs/AI_ODLC_WORKFLOW.md), and [`skills/WORKSHOP_SKILLS.md`](./skills/WORKSHOP_SKILLS.md) for design, security, AI-ODLC workflow, and workshop skill details.
 
+## Agent Plugin Marketplace
+
+This repository is a marketplace for the `ontoforge-workshop` plugin. Install it
+after checking out the branch that contains the marketplace files:
+
+```bash
+# Codex and Claude Code together, from the repository root
+./scripts/install-agent-plugins.sh
+
+# Or install only one integration
+./scripts/install-codex-plugin.sh
+./scripts/install-claude-plugin.sh
+```
+
+For installation directly from GitHub after these marketplace files are published:
+
+```bash
+# Codex
+codex plugin marketplace add aws-samples/sample-ontology-discovery-workshop --ref v2
+codex plugin add ontoforge-workshop@ontoforge
+
+# Claude Code
+claude plugin marketplace add aws-samples/sample-ontology-discovery-workshop@v2 --scope user
+claude plugin install ontoforge-workshop@ontoforge --scope user
+```
+
+Start a new agent session after installation. In Codex invoke `$run-workshop`; in
+Claude Code invoke `/ontoforge-workshop:start`. The plugin expects to run inside an
+OntoForge repository checkout; it does not install the Python application itself.
+
 ## Language Behavior
 
 Repository documentation and agent skill files are written in English. During a workshop, the agent should detect the user's language from the operator/customer input and use that language for:
@@ -37,9 +67,15 @@ Graph identifiers remain standardized in English regardless of workshop language
 - **Fresh start**: use the reset control in the UI or call `POST /reset`.
 - **Change mode**: click entity/relation chips in the sidebar to remove them. Related relation types are removed when an entity type is dropped.
 - **AI-ODLC workflow**: run a one-day AI-guided ontology discovery lifecycle with first-class stories, claims, events, competency questions, data sources, mappings, validation query seeds, RDF decisions, risks, action items, gate checks, and coverage.
-- **Interactive cockpit**: submit workflow answers/data structures, request the next AI question, advance gates, and generate adversarial review from the browser.
+- **Interactive browser cockpit**: inspect predicate-level gate failures; navigate Stories, Events, Questions, Model, Data, Review, and Actions; make explicit evidence decisions; submit current-stage answers; and advance only to the next stage.
+- **Terminal cockpit**: use the same server-owned gates from a Textual TUI with seven evidence panels, gate drill-down, answer/advance/force controls, review decisions, and one explicit static RDF handoff check.
 - **RDF handoff**: call POST /export/rdf or generate a report to create Turtle, JSON-LD, SHACL, SPARQL, RDF mapping, and Neptune RDF follow-up files under exports/.
 - **Bounded validation**: run `POST /workflow/validate` or use the cockpit button for one on-demand static RDF/SPARQL/SHACL handoff check. It keeps only the latest result and never polls or retries automatically.
+
+Final handoff approval additionally requires the complete adjacent-stage transition
+history through `validation_handoff`. Supplying final-looking evidence or only a final
+stage label does not complete the workshop; a forced next-stage transition remains
+possible only with an audited reason.
 - **Deliverables**: generate report, snapshot, and Neptune export artifacts under `exports/`.
   1. Workshop summary: entities, relations, and verified questions.
   2. AWS architecture recommendation: Amazon Neptune sizing, data flow, compliance, and security controls.
@@ -51,7 +87,19 @@ Graph identifiers remain standardized in English regardless of workshop language
 
 The local workshop runs openCypher against the embedded Kuzu graph, visualizes the result in Cytoscape, and records successful query evidence against workflow validation query seeds. Live remote Amazon Neptune queries are out of scope for this sample; the current Neptune path is export and handoff notes only.
 
+Only a successful query whose question and normalized openCypher text exactly match a
+stored high-priority competency-query seed, returns MATCH-bound variables for every
+expected answer-shape label in one connected relationship pattern, and has a current query-evidence fingerprint counts toward
+workflow handoff. That fingerprint is independent of RDF static-validation and handoff
+package fingerprints, so one kind of evidence cannot keep another kind current. Successful
+ad-hoc or disconnected Cartesian queries remain useful for exploration but do not open the handoff gate.
+
 `POST /workflow/validate` is narrower: it verifies required RDF artifacts, JSON-LD structure, read-only SPARQL seed syntax, and SHACL/T-Box structural coverage. It does not execute SPARQL or claim formal SHACL conformance. Results are written to `validation_report.json` and `validation_report.md`; relevant later changes mark the latest result `stale` without rerunning it. There is no scheduler, polling, background worker, or automatic retry.
+
+Only a current `pass` can satisfy a requested static-validation handoff check or
+resolve its prior failure action; `warning` remains non-approving evidence. Its RDF
+input fingerprint must match the RDF input fingerprint in the final package manifest,
+so changing the base IRI while packaging invalidates the earlier approval.
 
 ## Quick Start
 
@@ -80,6 +128,16 @@ PYTHONPATH=src python src/seed_demo.py
 PYTHONPATH=src uvicorn ontology_workshop.server:app --reload
 # Browser: http://localhost:8000
 ```
+
+In another terminal, start the optional terminal cockpit:
+
+```bash
+PYTHONPATH=src python -m ontology_workshop.tui --url http://127.0.0.1:8000
+```
+
+Set `ONTOFORGE_TOKEN` or pass `--token` when authentication is required. The TUI
+uses one WebSocket stream plus an explicit Refresh action; it does not poll,
+automatically reconnect, rerun reviews, or retry validation.
 
 ## Persistence and Restore
 

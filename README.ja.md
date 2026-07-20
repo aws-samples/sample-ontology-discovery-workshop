@@ -25,10 +25,12 @@
 ### ワークショップ運用（M2）
 - **白紙から開始**: 左上の `⟲ 白紙` ボタン → 新しい顧客対話を最初から積み上げる
 - **編集モード**: サイドバーのエンティティ／関係チップをクリックすると削除（関連する関係も連鎖削除）。対話中の「模擬試験を追加したら？」のような変更がリアルタイムに反映される
-- **AI-ODLC Cockpit**: 右パネルで current stage, gates, next question, evidence count, detailed evidence cards を確認し、ユーザー回答やデータ構造を `/workflow/answer` に直接反映できる。
-- **敵対的レビュー**: cockpit のレビュー操作または `/workflow/review` により、現在の gates と evidence gaps から assumptions, risks, action items を生成する。
+- **AI-ODLC ブラウザ Cockpit**: Stories, Events, Questions, Model, Data, Review, Actions と条件別 gate failure を確認し、現在 stage の回答入力と claim/finding の confirm・reject・revise・resolve を行う。stage は次へだけ進み、強制進行には監査理由が必要。
+- **Terminal Cockpit**: Textual TUI でも同じ server gate を使用し、7つの evidence panel、gate detail、回答・進行・強制進行、review decision、明示的な RDF 静的引継チェックを提供する。
+- **敵対的レビュー**: cockpit または `/workflow/review` で ambiguity, contradiction, unsupported causality, event modeling, over-modeling, sensitivity を1回評価する。自動生成項目だけでは review gate は通過せず、high risk の accept には owner 付き action が必要。
 - **RDF 引継**: `POST /export/rdf` または report export により、`exports/rdf/` または `exports/report/rdf/` に RDF/SHACL/SPARQL/Neptune RDF follow-up 成果物を生成する。
 - **限定された検証ループ**: cockpit ボタンまたは `POST /workflow/validate` により、RDF/SPARQL/SHACL 引継成果物をユーザー操作で1回だけ静的検証する。最新結果1件だけを保持し、自動ポーリングや再試行は行わない。
+- **最終 stage の証明**: 最終引継承認には隣接 stage の遷移履歴全体を通って `validation_handoff` に到達する必要がある。最終形の evidence や最終 stage label だけを直接注入しても完了せず、強制的な次 stage 移動には監査理由が必要。
 - **ワークショップ引継成果物**: `📄 レポート` ボタン → `exports/report/` に生成
   1. ワークショップサマリー（エンティティ・関係・検証クエリ）
   2. AWS 構築アーキテクチャ提案（Neptune 規模の自動推定 + データフロー + コンプライアンス）
@@ -40,7 +42,41 @@
 ### クエリ実行対象
 現在はローカル Kùzu グラフに対して openCypher を実行し、Cytoscape で結果を可視化します。成功したクエリは workflow validation query seed に verification evidence として記録されます。リモート Neptune へのライブクエリはスコープ外で、現時点ではエクスポートと handoff note のみを提供します。
 
+workflow handoff evidence として認めるのは、question と正規化した openCypher の両方が保存済み high-priority competency-query seed に一致し、expected answer shape の各 label に MATCH で束縛された変数を一つの接続された関係 pattern から返し、実行時の query-evidence fingerprint が現在と同じ場合だけです。query fingerprint は RDF static-validation fingerprint と handoff package fingerprint から分離され、ある証拠の freshness が別の証拠を代替しません。ad-hoc、切断された Cartesian MATCH、変更前 model の成功クエリは handoff gate を開きません。
+
 `POST /workflow/validate` は必須 RDF 成果物、JSON-LD 構造、読み取り専用 SPARQL seed 構文、SHACL と T-Box の構造的整合性のみを確認する。SPARQL 実行や正式な SHACL conformance 判定は行わない。結果は `validation_report.json` と `validation_report.md` に記録され、その後に関連入力が変わると再実行せず最新結果を `stale` と表示する。スケジューラ、ポーリング、バックグラウンド処理、自動再試行はない。
+
+検証を実行した場合、最終 package manifest の RDF input fingerprint と検証時の fingerprint も一致する必要があります。そのため package 作成時に base IRI を変更すると、以前の pass はその bundle を承認しません。
+
+## エージェントプラグイン Marketplace
+
+このリポジトリ自体が `ontoforge-workshop` プラグインの marketplace です。
+marketplace ファイルを含むブランチを checkout し、リポジトリルートで実行します。
+
+```bash
+# Codex と Claude Code をまとめてインストール
+./scripts/install-agent-plugins.sh
+
+# 個別にインストール
+./scripts/install-codex-plugin.sh
+./scripts/install-claude-plugin.sh
+```
+
+GitHub に marketplace ファイルが公開された後は、次のように直接インストールできます。
+
+```bash
+# Codex
+codex plugin marketplace add aws-samples/sample-ontology-discovery-workshop --ref v2
+codex plugin add ontoforge-workshop@ontoforge
+
+# Claude Code
+claude plugin marketplace add aws-samples/sample-ontology-discovery-workshop@v2 --scope user
+claude plugin install ontoforge-workshop@ontoforge --scope user
+```
+
+インストール後は新しいセッションを開始し、Codex では `$run-workshop`、Claude Code
+では `/ontoforge-workshop:start` を実行します。このプラグインは OntoForge
+リポジトリ内で使うワークフローであり、Python アプリケーション自体はインストールしません。
 
 ## クイックスタート
 
@@ -68,6 +104,16 @@ PYTHONPATH=src python src/seed_demo.py
 PYTHONPATH=src uvicorn ontology_workshop.server:app --reload
 # ブラウザで http://localhost:8000
 ```
+
+別の terminal で任意の terminal cockpit を起動できます。
+
+```bash
+PYTHONPATH=src python -m ontology_workshop.tui --url http://127.0.0.1:8000
+```
+
+認証が必要な場合は `ONTOFORGE_TOKEN` を設定するか `--token` を渡します。TUI は
+live update 用 WebSocket 1接続と明示的な Refresh のみを使用し、polling、
+自動再接続、review/validation の自動再実行は行いません。
 
 ### 永続化と復元
 ワークショップデータはデフォルトで `workshop.kuzu` に保存されます。既存ワークショップを続ける場合は、`ONTOFORGE_FRESH=1` を付けずにサーバーを再起動してください。

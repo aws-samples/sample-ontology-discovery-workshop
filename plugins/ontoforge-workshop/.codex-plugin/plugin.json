@@ -1,0 +1,32 @@
+{
+  "name": "ontoforge-workshop",
+  "version": "0.4.0",
+  "description": "Run a domain-neutral, one-day OntoForge AI-ODLC workshop from the repository runtime.",
+  "author": {
+    "name": "OntoForge contributors"
+  },
+  "repository": "https://github.com/aws-samples/sample-ontology-discovery-workshop",
+  "license": "Apache-2.0",
+  "keywords": [
+    "ontology",
+    "ai-odlc",
+    "rdf",
+    "workshop"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "OntoForge Workshop",
+    "shortDescription": "Facilitate a one-day AI-ODLC workshop.",
+    "longDescription": "Guides a bounded ontology discovery workshop through user stories, domain narratives, events, competency questions, candidate models, real data structures, adversarial review, and RDF-aware handoff evidence.",
+    "developerName": "OntoForge contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Local API"
+    ],
+    "defaultPrompt": [
+      "Start an OntoForge workshop with stage Markdown forms.",
+      "Resume the current OntoForge workshop."
+    ]
+  }
+}

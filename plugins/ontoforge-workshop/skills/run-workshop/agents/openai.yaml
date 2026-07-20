@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run OntoForge Workshop"
+  short_description: "Facilitate a one-day ontology discovery workshop"
+  default_prompt: "Use $run-workshop to start or resume an OntoForge AI-ODLC workshop with stage Markdown forms."

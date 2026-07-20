@@ -1,0 +1,20 @@
+{
+  "name": "ontoforge",
+  "interface": {
+    "displayName": "OntoForge"
+  },
+  "plugins": [
+    {
+      "name": "ontoforge-workshop",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ontoforge-workshop"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

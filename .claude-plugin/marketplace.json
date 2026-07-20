@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ontoforge",
+  "metadata": {
+    "description": "OntoForge AI-ODLC ontology discovery workshop plugins.",
+    "version": "0.4.0"
+  },
+  "owner": {
+    "name": "OntoForge contributors"
+  },
+  "plugins": [
+    {
+      "name": "ontoforge-workshop",
+      "description": "Run a domain-neutral, one-day OntoForge AI-ODLC workshop.",
+      "version": "0.4.0",
+      "author": {
+        "name": "OntoForge contributors"
+      },
+      "source": "./plugins/ontoforge-workshop",
+      "category": "development-tools"
+    }
+  ]
+}

@@ -9,3 +9,5 @@ exports/
 .venv/
 *.egg-info/
 .claude/settings.local.json
+/temp/
+/answers/

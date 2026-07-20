@@ -1,0 +1,11 @@
+{
+  "name": "ontoforge-workshop",
+  "version": "0.4.0",
+  "description": "Run a domain-neutral, one-day OntoForge AI-ODLC workshop from the repository runtime.",
+  "author": {
+    "name": "OntoForge contributors"
+  },
+  "repository": "https://github.com/aws-samples/sample-ontology-discovery-workshop",
+  "license": "Apache-2.0",
+  "keywords": ["ontology", "ai-odlc", "rdf", "workshop"]
+}

@@ -302,7 +302,9 @@ The model should remain candidate-level until reviewed.
 
 Gate to advance:
 
-- each high-priority question has a candidate graph pattern;
+- each high-priority question has its own candidate graph pattern: every expected
+  answer-shape element is explicitly linked to that question and a multi-element
+  shape has a question-linked relation between linked endpoint candidates;
 - each model element is connected to at least one story, event, question, or data source need;
 - obvious duplicates and naming conflicts are reviewed.
 
@@ -398,11 +400,11 @@ Gate to complete:
 - next-step owners are recorded where possible;
 - the assistant does not claim production readiness unless evidence supports it.
 
-## Suggested Data Model Additions
+## Implemented Workflow Data Model
 
 AI-ODLC needs workflow objects beyond the current graph model.
 
-Suggested first-class objects:
+Implemented first-class collections and derived objects:
 
 ~~~text
 WorkshopStage
@@ -414,12 +416,20 @@ ModelCandidate
 DataSource
 FieldMapping
 Assumption
+Contradiction
 Risk
 Decision
+ReviewFinding
+ActionItem
+ValidationQuery
+RDFDecision
 Gate
+ReviewRun
+TransitionHistory
+HandoffManifest
 ~~~
 
-Suggested claim shape:
+Representative claim shape:
 
 ~~~json
 {
@@ -439,7 +449,7 @@ Suggested claim shape:
 }
 ~~~
 
-Suggested user story shape:
+Representative user story shape:
 
 ~~~json
 {
@@ -447,11 +457,12 @@ Suggested user story shape:
   "goal": "Trace product defect causes faster",
   "decision": "Identify affected supplier lots and production lines",
   "success_metric": "Reduce root-cause analysis time from days to hours",
+  "scope": "One traceability scenario in the one-day workshop",
   "priority": "high"
 }
 ~~~
 
-Suggested data source shape:
+Representative data source shape:
 
 ~~~json
 {
@@ -469,11 +480,9 @@ Suggested data source shape:
 }
 ~~~
 
-## Suggested API Additions
+## Implemented Workflow API
 
-The current OntoForge REST API can remain, but AI-ODLC needs workflow-state endpoints.
-
-Possible additions:
+The v2 server exposes these workflow-state endpoints:
 
 ~~~text
 POST /workflow/start
@@ -485,6 +494,8 @@ POST /workflow/review
 POST /workflow/validate
 GET  /workflow/next-question
 GET  /workflow/gates
+GET  /workflow/items/{collection}
+POST /workflow/items/{collection}/{item_id}/decision
 
 POST /claim
 POST /story
@@ -494,10 +505,34 @@ POST /data-source
 POST /mapping
 POST /validation-query
 POST /rdf-decision
+POST /assumption
+POST /contradiction
+POST /finding
+POST /risk
+POST /action
 GET  /coverage
 ~~~
 
-POST /workflow/answer should be the main AI-driven endpoint. A user answer should cause the AI workflow to:
+`POST /workflow/answer` records evidence only for `current_stage`; a client cannot
+change the stage by labeling an answer. `POST /workflow/advance` permits only the
+immediate next stage. A forced advance uses the same sequential transition, requires
+an explanatory reason, and records the reason, actor, and bypassed gates in workflow
+history and the audit log. Skips and backward transitions are rejected.
+
+Structured objects supplied with an answer may populate multiple evidence collections,
+but their capture `stage` is always overwritten with the actual current stage. A client
+cannot forge future-stage provenance through the extracted payload.
+
+Review decisions use `confirm`, `accept`, `reject`, `revise`, `resolve`, or `start`.
+`revise` applies explicitly supplied field corrections and leaves the object in
+`revision_requested`; every decision requires a justification note, with classification
+or evidence-link changes recorded explicitly in that note.
+High-severity risks or findings may be accepted only with a linked action containing
+an owner. `update` and `merge` preserve before/after history. Deduplication fills only
+empty fields; competing non-empty values become visible `merge_conflicts` until an
+explicit update or merge decision resolves them.
+
+`POST /workflow/answer` is the main AI-driven endpoint. A user answer causes the workflow to:
 
 1. store the answer as one or more claims;
 2. extract model candidates;
@@ -508,11 +543,14 @@ POST /workflow/answer should be the main AI-driven endpoint. A user answer shoul
 7. produce the next best question;
 8. push an updated narration/workflow state to the browser.
 
-## TUI and Browser Workflow Improvements
+## Browser and Terminal Cockpits
 
-The current viewer is graph-centered. AI-ODLC needs a workshop cockpit that shows both the conversation flow and the model state.
+OntoForge v2 provides both a responsive browser cockpit and a Textual terminal
+cockpit. Both consume the same server-owned workflow state; neither duplicates gate
+logic. The browser adds the Cytoscape model view, while the terminal surface prioritizes
+keyboard operation, predicate evidence, and facilitator actions.
 
-Suggested panels:
+Implemented panel information architecture:
 
 ~~~text
 [Stage]
@@ -568,7 +606,27 @@ Suggested panels:
 - SHACL
 ~~~
 
-The UI should make uncertainty visible. A graph node that is confirmed should not look the same as a node that is assumed or missing data mapping.
+The implemented cockpit separates Stories, Events, Questions, Model, Data, Review,
+and Actions. Each gate exposes its individual predicates and missing evidence. Review
+cards support confirm/accept/reject/revise/resolve decisions, validation cards expose
+check-level results and report links, and forced advance requires a reason dialog.
+Graph elements and evidence cards visually distinguish confirmed, assumed/candidate,
+conflicting, and missing-evidence states. Narrow-screen layouts stack the feed, graph,
+and cockpit; keyboard focus, labels, live status announcements, request locking, and
+request error handling are included.
+
+Start the optional terminal cockpit after the FastAPI server:
+
+~~~bash
+PYTHONPATH=src python -m ontology_workshop.tui --url http://127.0.0.1:8000
+~~~
+
+It exposes Stories, Events, Questions, Model, Data, Review, and Actions; current-stage
+answers; adjacent-stage advance; audited force-next; bounded adversarial review;
+explicit evidence decisions; validation/handoff evidence; and one user-triggered
+static RDF handoff check. It consumes one WebSocket update stream and offers manual
+Refresh. A closed stream is reported rather than silently reconnected; there is no
+polling or automatic review/validation retry.
 
 ## RDF and SHACL Readiness
 
@@ -604,7 +662,7 @@ Property graph export should remain supported. The workflow should produce both 
 
 The validation loop is deliberately user-triggered and single-run. In the cockpit or through `POST /workflow/validate`, OntoForge generates the current RDF handoff bundle, checks required artifacts, JSON-LD structure, read-only SPARQL seed syntax, and SHACL/T-Box structural coverage, then stores only the latest result as workflow evidence. Source and bundle fingerprints mark that result `stale` if relevant model or workflow inputs later change; this is an on-read comparison, not background monitoring.
 
-A failed run produces at most one deduplicated review finding and one action item. The operator fixes the model or decision, then chooses whether to rerun once; a passing rerun resolves those generated items. This keeps the loop useful without turning the AI assistant into a babysitter. No scheduler, polling, background worker, continuous monitoring, or automatic retry is part of this workflow.
+A failed run produces at most one deduplicated review finding and one action item. The operator fixes the model or decision, then chooses whether to rerun once; only a `pass` rerun resolves those generated items, while `warning` leaves them open. This keeps the loop useful without turning the AI assistant into a babysitter. No scheduler, polling, background worker, continuous monitoring, or automatic retry is part of this workflow.
 
 The scope is `static_handoff_validation`. It does not execute SPARQL, run a SHACL engine, establish data conformance, perform OWL reasoning, or validate production Neptune performance. Those remain explicit technical handoff tasks.
 
@@ -612,60 +670,64 @@ The scope is `static_handoff_validation`. It does not execute SPARQL, run a SHAC
 
 | Gate | Required Evidence |
 | --- | --- |
-| Inception | actor, decision, goal, scope, success metric |
-| Discovery | domain narrative, key terms, scenario claims |
-| Event Discovery | events, triggers, state changes, unresolved event semantics |
-| Story-to-Question | prioritized competency questions and answer shapes |
-| Model Synthesis | candidate T-Box/A-Box connected to questions |
-| Data Grounding | source mapping and readiness status |
-| Adversarial Review | assumptions, risks, contradictions, gaps |
-| Validation and Handoff | verified queries, current validation evidence when requested, report, exports, action items |
+| Inception | high-priority story with actor, goal, decision, success metric, and explicit one-day scope |
+| Discovery | discovery narrative linked to a priority story; confirmed terms or a resolved ambiguity decision |
+| Event Discovery | event name, trigger, state change, and node/relation/property classification, or explicit no-event rationale; no open event-semantic finding |
+| Story-to-Question | every high-priority story covered by prioritized questions with expected answer shapes |
+| Model Synthesis | non-empty entity/relation T-Box; every T-Box/candidate traceable to story, event, question, or source with a kind-compatible candidate; relation endpoints match known entities and the T-Box; every high-priority question has linked candidates for all answer-shape elements and, for a multi-element shape, a linked relation pattern; naming conflicts resolved |
+| Data Grounding | concrete source-field-target mappings whose fields exist when a source schema is supplied and whose targets are existing model elements/properties, readiness status, source owner/freshness, priority model coverage, and linked actions for missing/unknown mappings |
+| Adversarial Review | current bounded review over material evidence covering ambiguity, contradiction, causality, event modeling, over-modeling, and sensitivity; critical items resolved/rejected; high items resolved/rejected or accepted with owned actions |
+| Validation and Handoff | canonical adjacent-stage transition history through the final stage, including audited reasons for any forced next step; every preceding gate passed; non-empty current T-Box; exact current-model openCypher seed evidence for every high-priority question; owner-tagged action; current report/snapshot/Neptune/RDF artifact manifest; current PASS static RDF validation if requested; no open validation action |
 
-## Implementation Roadmap
+The final gate does not use a global successful-query count. An ad-hoc query such as
+`RETURN 1` cannot verify a competency question: both the question and normalized
+openCypher text must match the stored seed, and execution evidence must match the
+current query-evidence fingerprint. The query must return MATCH-bound variables for
+every expected answer-shape label in one connected relationship pattern; using those
+labels only in comments, strings, aliases, or disconnected Cartesian matches does not
+establish relevance. Generated openCypher and SPARQL seeds include every answer-shape
+element rather than silently truncating shapes longer than two. Query evidence, RDF static validation, and final
+handoff packages use separate fingerprints so their freshness cannot substitute for
+one another. Static RDF validation remains optional
+unless requested, but once requested only a fresh `pass` qualifies. `warning`, stale,
+or empty-model results do not qualify. A static pass still does not mean SPARQL was
+executed or a SHACL engine established conformance.
+
+When validation was requested, its RDF input fingerprint must also equal the RDF input
+fingerprint recorded in the final handoff manifest. A pass generated with one base IRI
+cannot approve a package later generated with another base IRI or another RDF input set.
+
+The final completion gate also requires a generated handoff manifest containing
+non-empty Markdown/HTML reports, read-only HTML/JSON snapshots, Neptune openCypher and
+Bulk Loader files, and RDF ontology/instances/JSON-LD/SHACL/SPARQL/mapping/handoff
+files. The manifest is marked complete only when every required artifact was actually
+recorded, and stores both the packaged RDF-input fingerprint and a broader handoff
+source fingerprint; later graph, workflow,
+review-decision, or validation changes mark it stale until the operator regenerates
+the report package. Missing or empty recorded files also close the gate. The generated
+workshop ZIP is recorded. Artifact generation is user-triggered and is never scheduled or
+retried automatically.
 
 ## v2 Implementation Status
 
-The v2 implementation delivers a working AI-ODLC vertical slice: server-side workflow state, deterministic answer processing, workflow REST endpoints, evidence-aware next-question generation, automatic adversarial review generation, query verification evidence tracking, workflow state in snapshot/autosave/import/report paths, an interactive browser AI-ODLC cockpit, AI-ODLC report sections, updated Claude/Kiro workshop skill instructions, RDF/SHACL handoff export, an on-demand bounded static validation loop, Neptune RDF follow-up notes, and smoke/unit checks.
+The v2 implementation delivers a guarded AI-ODLC vertical slice: sequential workflow
+state transitions, executable evidence-quality gates, deterministic answer processing,
+review-object decision history, semantic adversarial checks, exact competency-query
+verification, workflow state in snapshot/autosave/import/report paths, a responsive
+browser cockpit, RDF/SHACL handoff export, and an on-demand bounded static validation
+loop, plus a Textual terminal cockpit backed by the same REST/WebSocket contracts.
 
 RDF/SHACL support in v2 is intentionally a handoff layer, not production reasoning. It generates Turtle, JSON-LD, SHACL seed shapes, SPARQL seed queries, mapping notes, Neptune RDF follow-up notes, and optional static validation reports. Full SPARQL execution, SHACL engine conformance, OWL reasoning, named graph policy, and production-grade SHACL constraint design remain follow-up work.
 
-### Phase 1: Documented Workflow and Agent Skill
+Implemented scope includes workflow state and autosave, explicit decision history,
+quality gates, browser and terminal cockpit panels, query candidates and verification evidence,
+RDF/SHACL/SPARQL seed generation, bounded static validation, AI-ODLC report sections,
+Neptune and RDF handoff notes, and a current artifact manifest/ZIP.
 
-- Add this workflow design to the repository.
-- Update workshop skill instructions to follow AI-ODLC stages.
-- Add explicit claim states and adversarial review rules to the skill.
-- Keep implementation read-only except for current graph/report endpoints.
-
-### Phase 2: Workflow State Objects
-
-- Add server-side workflow state.
-- Add story, question, claim, event, data source, and mapping objects.
-- Autosave workflow state with the existing workshop snapshot.
-- Include workflow state in report export.
-
-### Phase 3: Cockpit UI
-
-- Add TUI/browser panels for stage, questions, data mappings, risks, and gates.
-- Show confidence and readiness status visually.
-- Let the operator submit AI-ODLC answers, advance gates, request the next question, and generate adversarial review from the browser cockpit.
-- Link graph elements to their source claims and data mappings.
-
-### Phase 4: Validation Expansion
-
-- Generate query candidates from competency questions.
-- Track query readiness and verification evidence.
-- Add optional SPARQL seed query candidates.
-- Add SHACL seed shape generation for required properties, datatypes, and cardinality notes.
-- Add one user-triggered static handoff validation and retain only its latest evidence.
-- Execute and validate SPARQL candidates in a future phase.
-
-### Phase 5: Export and Handoff Expansion
-
-- Extend the report with AI-ODLC sections.
-- Add RDF/SHACL export artifacts.
-- Add RDF decisions, validation query seeds, source mappings, and readiness notes to handoff artifacts.
-- Add Neptune RDF handoff notes where applicable.
-- Package workflow state, report, graph snapshot, property graph export, and RDF artifacts together.
+Explicit follow-up scope remains standards-complete RDF parsing, live SPARQL execution,
+SHACL engine conformance, OWL reasoning, named-graph policy, production Neptune loading
+and performance validation, and production-grade SHACL policy design. These are not
+silently approximated by the one-day workflow.
 
 ## Success Criteria
 
