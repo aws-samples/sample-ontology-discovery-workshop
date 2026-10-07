@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ontology Discovery — Model Review</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="lib/cytoscape.min.js"></script>
+  <script defer src="lib/layout-base.min.js"></script>
+  <script defer src="lib/cose-base.min.js"></script>
+  <script defer src="lib/cytoscape-fcose.min.js"></script>
+  <script defer src="lib/cytoscape-cose-bilkent.min.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">od.</span><div><h1>Ontology Discovery</h1><span class="eyebrow">LOCAL MODEL REVIEW</span></div></div>
+    <div class="project"><strong id="project-title">워크숍 연결 중</strong><span id="phase-label" class="muted">게시된 모델을 읽고 있습니다</span></div>
+    <div class="top-actions"><span id="connection" class="connection" role="status">연결 중</span><button id="toggle-left" aria-controls="left-panel" aria-expanded="true">Cypher · 이력</button><button id="toggle-right" aria-controls="right-panel" aria-expanded="true">모델 · 상세</button></div>
+  </header>
+  <div class="boundary"><span class="live-dot" aria-hidden="true"></span><strong>로컬 AI가 모델링합니다.</strong><span>이 웹은 시각화·상세 검토·읽기 전용 Cypher 조회만 수행합니다.</span><span id="demo-badge" class="badge" hidden>예시 데이터</span></div>
+  <div id="app-error" class="error-banner" role="alert" hidden></div>
+  <main id="workspace" class="workspace">
+    <aside id="left-panel" class="panel left-panel" aria-label="Cypher 쿼리와 변경 내역">
+      <div class="panel-heading"><span class="eyebrow">01 / EXPLORE</span><h2>Cypher & activity</h2><p>게시된 모델에 질문하고, 변화를 확인합니다.</p></div>
+      <section class="panel-section query-section">
+        <div class="section-heading"><h3>Cypher 조회</h3><span class="badge teal">READ ONLY</span></div>
+        <label for="query-presets" class="field-label">로컬 AI가 남긴 쿼리</label>
+        <select id="query-presets"><option value="">직접 작성</option></select>
+        <label for="cypher-input" class="sr-only">Cypher 쿼리</label>
+        <textarea id="cypher-input" spellcheck="false" rows="6" placeholder="MATCH (node)&#10;RETURN node&#10;LIMIT 25"></textarea>
+        <details class="parameters"><summary>파라미터 JSON</summary><label for="query-parameters" class="sr-only">Cypher 파라미터</label><textarea id="query-parameters" spellcheck="false" rows="3">{}</textarea></details>
+        <div class="query-actions"><span class="muted">⌘ / Ctrl + Enter</span><button id="run-query" class="primary" disabled>쿼리 실행 ↗</button></div>
+        <p id="query-capability" class="hint">엔진 확인 중</p>
+        <div id="query-message" role="status" class="hint"></div>
+        <div id="query-results" class="query-results"></div>
+        <button id="focus-results" class="full-width" hidden>쿼리 결과를 그래프에서 보기</button>
+      </section>
+      <section class="panel-section activity-section">
+        <div class="tabs" role="tablist" aria-label="활동 내역">
+          <button id="changes-tab" role="tab" aria-selected="true" aria-controls="change-history">변경 내역 <span id="change-count">0</span></button>
+          <button id="queries-tab" role="tab" aria-selected="false" aria-controls="query-history" tabindex="-1">실행 쿼리</button>
+        </div>
+        <div id="change-history" role="tabpanel" aria-labelledby="changes-tab" class="timeline"></div>
+        <div id="query-history" role="tabpanel" aria-labelledby="queries-tab" class="timeline" hidden></div>
+      </section>
+    </aside>
+    <section class="graph-panel" aria-label="온톨로지 그래프">
+      <div class="graph-toolbar">
+        <div class="view-switch" role="group" aria-label="그래프 뷰"><button data-view="tbox" aria-pressed="true">T-box <small>스키마</small></button><button data-view="abox" aria-pressed="false">A-box <small>인스턴스</small></button></div>
+        <label class="layout-control"><span class="sr-only">레이아웃</span><select id="layout-select" aria-label="레이아웃"><option value="fcose">fCoSE</option><option value="cose-bilkent">CoSE Bilkent</option><option value="breadthfirst">계층형</option><option value="concentric">동심원</option><option value="cose">CoSE 기본</option></select></label>
+        <button id="fit-graph" title="현재 보이는 그래프 전체 보기">전체 맞춤</button>
+        <details class="export-menu"><summary>내보내기 ↓</summary><div><button id="export-cypher-model">전체 모델 Cypher</button><button id="export-cypher-schema">T-box 스키마 Cypher</button><button id="export-cypher-data">A-box 데이터 Cypher</button><button id="export-json">모델 JSON</button><button id="export-png">PNG</button><button id="export-svg">SVG</button></div></details>
+      </div>
+      <div class="graph-subbar"><div><span class="eyebrow" id="view-eyebrow">SCHEMA GRAPH</span><strong id="graph-count">0 nodes · 0 relations</strong></div><label class="search"><span aria-hidden="true">⌕</span><input id="graph-search" type="search" placeholder="이름·ID·속성 검색" aria-label="그래프 검색"></label><details id="filter-menu" class="filter-menu"><summary>필터 <span id="filter-count"></span></summary><div class="filter-popover"><h4>단계</h4><div id="phase-filters"></div><h4>페르소나</h4><div id="persona-filters"></div><label><input type="checkbox" id="persona-spotlight"> 관련 없는 노드는 흐리게</label><h4>Bounded Context</h4><div id="bc-filters"></div><button id="reset-filters">필터 초기화</button></div></details></div>
+      <div id="focus-bar" class="focus-bar" hidden><span id="focus-label"></span><button id="clear-focus">강조 해제 ×</button></div>
+      <div class="canvas-wrap"><div id="cy" tabindex="0" aria-label="노드를 선택하면 오른쪽에서 상세를 확인할 수 있습니다"></div><div id="graph-empty" class="graph-empty" hidden><span class="empty-mark">◇</span><h3 id="empty-title">아직 모델이 없습니다</h3><p id="empty-description">로컬 AI가 모델을 게시하면 이곳에 나타납니다.</p></div><div class="canvas-legend"><span><i class="legend-node"></i>엔티티</span><span><i class="legend-node candidate"></i>후보</span><span><i class="legend-node warning"></i>품질 경고</span><span class="legend-hint">드래그: 배치 · 스크롤: 확대</span></div></div>
+      <footer class="graph-footer"><span id="render-time">아직 게시되지 않음</span><span id="model-revision" class="mono"></span><span>5초마다 갱신</span></footer>
+    </section>
+    <aside id="right-panel" class="panel right-panel" aria-label="T-box A-box 타입과 노드 인스펙터">
+      <div class="right-scroll">
+      <div class="panel-heading"><span class="eyebrow">02 / UNDERSTAND</span><h2>Model & inspector</h2><p>타입, 인스턴스, 근거를 함께 확인합니다.</p></div>
+      <section class="panel-section"><div class="model-counts"><button data-view="tbox" class="count-card"><span>T-BOX / 스키마</span><strong id="schema-count">0 <small>타입</small></strong><em id="relation-count">관계 타입 0</em></button><button data-view="abox" class="count-card"><span>A-BOX / 인스턴스</span><strong id="instance-count">0 <small>노드</small></strong><em id="edge-count">관계 0</em></button></div><p id="legacy-notice" class="hint" hidden>이전 형식의 통합 그래프입니다. T-box/A-box 구분은 로컬 AI의 명시적인 게시가 필요합니다.</p></section>
+      <section class="panel-section"><div class="section-heading"><h3>Entity types</h3><button id="all-entities" class="text-button">전체</button></div><div id="entity-types" class="type-list"></div><div class="section-heading relation-heading"><h3>Relation types</h3><button id="all-relations" class="text-button">전체</button></div><div id="relation-types" class="type-list"></div></section>
+      <section class="panel-section quality-section"><div class="section-heading"><h3>그래프 품질</h3><span id="quality-count" class="badge amber">0</span></div><div id="quality-summary" class="quality-summary"></div><label class="hint quality-toggle"><input id="show-reviewed" type="checkbox"> 검토 완료 포함</label><div id="quality-list" class="quality-list"></div><p class="hint">구조 휴리스틱 검사 · 의미 검증 아님<br>판단·수정·예외 처리는 로컬 AI에서 진행합니다.</p></section>
+      </div>
+      <section class="panel-section inspector-section"><div class="section-heading"><h3 id="inspector-title">Node inspector</h3><button id="clear-selection" class="text-button" hidden>선택 해제</button></div><div id="node-detail" aria-live="polite"><div class="empty-note">노드·관계 또는 타입을 선택하면<br>속성과 추적 근거를 확인할 수 있습니다.</div></div></section>
+    </aside>
+  </main>
+  <dialog id="feedback-dialog"><form id="feedback-form"><div class="section-heading"><h2>로컬 AI에 검토 요청</h2><button id="cancel-feedback" type="button" aria-label="닫기">×</button></div><p id="feedback-target" class="mono"></p><p class="hint">이 요청은 피드백 파일에 기록됩니다. 모델은 변경되지 않습니다.</p><label for="feedback-note">수정이 필요한 점과 근거</label><textarea id="feedback-note" required maxlength="4000" rows="5"></textarea><button class="primary" type="submit">검토 요청 기록</button><p id="feedback-status" role="status"></p></form></dialog>
+  <div id="toast" role="status" hidden></div>
+</body>
+</html>

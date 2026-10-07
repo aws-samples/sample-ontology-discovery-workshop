@@ -1,207 +1,52 @@
-# OntoForge — 온톨로지 디스커버리 워크샵 도구
+# OntoForge
 
-**한국어** · [English](./README.md) · [日本語](./README.ja.md)
+[English](./README.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md)
 
-고객과 **대화하며 온톨로지를 실시간으로 만들고 검증**하는 로컬 도구다. 합의된 온톨로지는 그대로 Amazon Neptune으로 승격(promote)하여 구성을 활용, 데이터 모델을 구축하여 향후 온톨로지 구축에 활용할 수 있습니다.
+OntoForge는 업무 대화와 기존 자료를 바탕으로 그래프 모델을 만드는 로컬 워크숍 도구입니다. 참가자는 자신의 AI 도구와 대화하고, 브라우저에서 모델을 검토합니다.
 
-## 데모
+## 진행 방식
 
-![OntoForge 데모](./images/demo.gif)
+AI는 업무 시나리오를 묻고 답변에서 엔티티와 관계를 정리합니다. 기존 스키마와 예시 데이터를 참고하고, 참가자가 확인한 내용에 따라 모델을 수정합니다.
 
-## 무엇을 하나
-1. 대화에서 엔티티·관계·속성을 구조화 → **Kùzu(임베디드 property graph)** 에 실시간 반영
-2. 스키마(T-Box) / 인스턴스(A-Box)를 **실시간 그래프로 시각화** (Cytoscape.js)
-3. 고객 질문을 **openCypher로 검증** — "이 답이 진짜 그래프에서 나오네요"
-4. 온톨로지 문서(Markdown, Obsidian 호환) 자동 생성
-5. **Neptune 익스포트** (openCypher 스크립트 + Bulk Loader CSV)
-6. **AI-ODLC 워크플로우**: 1-day AI 주도 온톨로지 디스커버리를 claims, user stories, events, competency questions, data sources, mappings, validation query seeds, RDF decisions, risks, action items, gates로 추적
-7. **RDF/SHACL 인계 산출물**: Turtle ontology/instances, JSON-LD, SHACL seed shapes, SPARQL seed queries, RDF mapping notes, Neptune RDF follow-up notes
-8. **제한된 정적 검증**: RDF/SPARQL/SHACL 인계 산출물을 요청 시 1회 검증하고 자동 감시는 하지 않음
+브라우저에서는 그래프와 워크숍 기록을 확인합니다. 노드 속성을 보고 관계를 따라가며, 업무 질문에 답할 수 있는 모델인지 Cypher 조회로 확인합니다.
 
-자세한 설계·보안 제약·범위는 [`docs/DESIGN.md`](./docs/DESIGN.md)와
-[`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md), [`docs/AI_ODLC_WORKFLOW.md`](./docs/AI_ODLC_WORKFLOW.md), 대화 스킬은
-[`skills/WORKSHOP_SKILLS.md`](./skills/WORKSHOP_SKILLS.md) 참조.
+## 확인할 내용
 
-## 에이전트 플러그인 Marketplace
+- T-box: 엔티티 타입, 관계 타입, 속성, 식별자 정의
+- A-box: 각 타입의 인스턴스와 실제 연결
+- Cypher: 업무 질문을 표현한 쿼리와 실행 결과
+- 워크숍 기록: 결정 사항, 자료 출처, 남은 질문, 모델 변경 내용
 
-이 저장소 자체가 `ontoforge-workshop` 플러그인의 marketplace다. marketplace
-파일이 포함된 브랜치를 checkout한 후 저장소 루트에서 설치한다.
+Cypher는 속성 그래프를 조회하고 생성하는 언어입니다. 그래프 모델은 타입, 속성, 관계의 정의이며 워크숍은 이 정의와 인스턴스 데이터를 나눠 관리합니다.
 
-```bash
-# Codex와 Claude Code를 함께 설치
-./scripts/install-agent-plugins.sh
+## 결과물
 
-# 하나씩 설치할 경우
-./scripts/install-codex-plugin.sh
-./scripts/install-claude-plugin.sh
-```
+워크숍이 끝나면 그래프 모델, 모델을 정한 근거, 검토에 사용한 쿼리가 남습니다. 웹에서 모델 JSON, PNG, SVG를 저장할 수 있습니다. Cypher는 스키마, 인스턴스 데이터, 전체 모델로 나눠 내보냅니다.
 
-marketplace 파일이 GitHub에 배포된 이후에는 저장소를 clone하지 않고도 설치할 수 있다.
+## 시작하기
+
+로컬 웹을 설치하고 환경을 확인합니다.
 
 ```bash
-# Codex
-codex plugin marketplace add aws-samples/sample-ontology-discovery-workshop --ref v2
-codex plugin add ontoforge-workshop@ontoforge
-
-# Claude Code
-claude plugin marketplace add aws-samples/sample-ontology-discovery-workshop@v2 --scope user
-claude plugin install ontoforge-workshop@ontoforge --scope user
+python3 -m venv viz-server/.venv
+viz-server/.venv/bin/python -m pip install -r viz-server/requirements.txt
+bash scripts/test-viz.sh
+bash scripts/serve.sh
 ```
 
-설치 후에는 새 세션을 시작한다. Codex에서는 `$run-workshop`, Claude Code에서는
-`/ontoforge-workshop:start`를 실행한다. 플러그인은 OntoForge 저장소 checkout 안에서
-사용하는 워크플로우이며 Python 애플리케이션 자체를 설치하지는 않는다.
+출력된 주소를 브라우저에서 엽니다. 기본 주소는 `http://127.0.0.1:5173`입니다. 로컬 AI에서 `/onto-discover` 또는 `온톨로지 발견 시작`으로 진행합니다. 모델과 답변은 `ontology-docs/`에 저장하고 웹은 게시된 모델을 보여줍니다.
 
-### 워크샵 운영 (M2)
-- **백지 시작**: 좌측 상단 `⟲ 백지` 버튼 → 새 고객 대화를 처음부터 쌓기
-- **변경 모드**: 사이드바의 엔티티/관계 칩을 클릭하면 삭제(관련 관계 연쇄 삭제). 대화 중 "모의고사 추가하면?" 같은 변경이 실시간 반영
-- **AI-ODLC 브라우저 Cockpit**: Stories, Events, Questions, Model, Data, Review, Actions 패널과 조건별 gate 실패를 확인하고, 현재 단계 답변 입력과 claim/finding의 확정·기각·수정·해결을 수행한다. 단계 이동은 다음 단계만 허용하고 강제 진행에는 감사 사유가 필요하다.
-- **터미널 Cockpit**: Textual TUI에서도 같은 서버 gate를 사용해 7개 evidence 패널, gate 상세, 답변/진행/강제 진행, review decision, 명시적 RDF 정적 인계 검증을 수행한다.
-- **적대적 리뷰**: cockpit의 리뷰 버튼 또는 `/workflow/review`로 모호성, 충돌, 근거 없는 인과, 이벤트 모델링, 과도한 모델링, 민감정보 위험을 1회 점검한다. 자동 생성된 항목만으로 리뷰 gate가 통과하지 않으며 high 위험 수용에는 담당자가 있는 액션이 필요하다.
-- **RDF 인계**: `POST /export/rdf` 또는 report export로 `exports/rdf/` 또는 `exports/report/rdf/`에 RDF/SHACL/SPARQL/Neptune RDF follow-up 산출물을 생성한다.
-- **제한된 검증 루프**: cockpit 버튼 또는 `POST /workflow/validate`로 RDF/SPARQL/SHACL 인계 산출물을 사용자가 원할 때 1회 정적 검증한다. 최신 결과 1건만 보존하며 자동 폴링·재시도는 하지 않는다.
-- **최종 단계 증명**: 최종 인계 승인은 인접 단계 전이 이력 전체를 거쳐 `validation_handoff`에 도달해야 한다. 최종 형태의 증거나 최종 stage 라벨만 직접 주입해도 완료되지 않으며, 강제 다음 단계 이동은 감사 사유가 있을 때만 가능하다.
-- **워크샵 인계 산출물**: `📄 보고서` 버튼 → `exports/report/`에 생성
-  1. 워크샵 서머리 (엔티티·관계·검증 질의)
-  2. AWS 구축 아키텍처 제안 (Neptune 규모 자동 추정 + 데이터 흐름 + 컴플라이언스)
-  3. 데이터 준비 상태 (보유/미보유 분류, 준비도 %)
-  4. **기술 미팅 인계서** — 확정 스키마, 적재용 익스포트 안내, 데이터 매핑 액션, 검증 포인트, 오픈 이슈
-  - 포맷: Markdown + HTML + PDF(weasyprint) + docx(python-docx)
-  - 인계 번들: 같은 폴더에 `neptune.cypher` + `bulk/*.csv` + `rdf/*`도 함께 생성 → 기술팀에 폴더째 전달
+예제 실행과 워크숍 당일 명령은 [로컬 워크숍 실행](./docs/LOCAL_WORKSHOP.md)에 정리했습니다.
 
-### 질의 실행 대상
-현재 로컬 Kùzu 그래프에 openCypher를 실행하고 Cytoscape에서 결과를 시각화한다. 성공한 질의는 workflow validation query seed에 검증 evidence로 기록된다. 리모트 Neptune 라이브 쿼리는 범위 밖이며 현재는 익스포트와 handoff note만 제공한다.
+기존 API 워크숍과 `$run-workshop` 플러그인도 유지합니다. 해당 서버의 상태는 파일 기반 워크숍과 별도이며 실행 방법은 같은 안내 문서에서 확인할 수 있습니다.
 
-워크플로우 인계 증거는 질문과 정규화된 openCypher가 저장된 high-priority competency-query seed와 모두 일치하고, expected answer shape의 각 라벨에 MATCH로 바인딩된 변수를 하나의 연결된 관계 패턴에서 반환하며, 실행 당시 query-evidence 지문이 현재 상태와 같은 경우에만 인정한다. query 지문은 RDF 정적 검증 지문 및 handoff package 지문과 분리되어 한 종류의 증거가 다른 종류의 최신성을 대신하지 않는다. 임의의 성공 질의, 서로 끊긴 Cartesian MATCH, 변경 전 모델의 질의 증거는 인계 gate를 열지 않는다.
+## 관련 문서
 
-`POST /workflow/validate`는 필수 RDF 산출물, JSON-LD 구조, 읽기 전용 SPARQL seed 구문, SHACL과 T-Box의 구조적 정합성만 확인한다. SPARQL을 실행하거나 정식 SHACL conformance를 판정하지 않는다. 결과는 `validation_report.json`과 `validation_report.md`에 기록되고, 이후 관련 입력이 바뀌면 재실행 없이 최신 결과를 `stale`로 표시한다. 스케줄러·폴링·백그라운드 작업·자동 재시도는 없다.
-
-검증을 실행했다면 최종 package manifest의 RDF 입력 지문과 검증 당시 지문도 같아야 한다. 따라서 package 생성 시 base IRI를 바꾸면 이전 pass는 해당 bundle을 승인하지 않는다.
-
-## 빠른 시작
-
-### Windows (PowerShell)
-```powershell
-py -3.11 -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-$env:PYTHONPATH="src"
-uvicorn ontology_workshop.server:app --reload
-# 브라우저: http://localhost:8000
-```
-> weasyprint는 Windows에서 GTK 런타임이 없으면 설치/실행이 까다로울 수 있다.
-> 그 경우 PDF만 자동으로 건너뛰고(나머지 3포맷은 정상 생성), HTML 리포트를
-> 브라우저에서 "인쇄 → PDF로 저장"하면 된다. 도구가 그렇게 안내한다.
-
-### macOS / Linux
-```bash
-pip install -r requirements.txt
-
-# 데모 데이터 시드 + 콘솔 출력
-PYTHONPATH=src python src/seed_demo.py
-
-# 워크샵 서버 (실시간 시각화 + 스킬 패널)
-PYTHONPATH=src uvicorn ontology_workshop.server:app --reload
-# 브라우저에서 http://localhost:8000
-```
-
-다른 터미널에서 선택형 terminal cockpit을 실행할 수 있다.
-
-```bash
-PYTHONPATH=src python -m ontology_workshop.tui --url http://127.0.0.1:8000
-```
-
-인증이 필요하면 `ONTOFORGE_TOKEN`을 설정하거나 `--token`을 전달한다. TUI는
-live update용 WebSocket 연결 1개와 명시적인 Refresh만 사용하며 polling, 자동
-재연결, review/validation 자동 재실행을 하지 않는다.
-
-### 유지/복원
-워크샵 데이터는 기본적으로 `workshop.kuzu`에 저장됩니다. 기존 워크샵을 이어서 불러오려면 `ONTOFORGE_FRESH=1` 없이 서버를 다시 시작하세요.
-
-```bash
-PYTHONPATH=src uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
-```
-
-정상 재시작 시 OntoForge는 다음 데이터를 다시 로드합니다.
-
-- 그래프 스키마와 인스턴스 데이터: `workshop.kuzu`
-- 워크샵 진행 피드와 검증 질의: `exports/session/workshop_snapshot.json`
-- Kùzu 그래프가 비어 있는 경우: autosave 스냅샷의 최신 그래프 상태
-
-그래프·진행 로그·검증 질의·import·reset·report가 바뀔 때마다 `exports/session/workshop_snapshot.json`에 자동 저장됩니다. 따라서 대부분의 워크샵은 위 정상 시작 명령으로 다시 복구할 수 있습니다.
-
-`ONTOFORGE_FRESH=1`은 시작 시 로컬 Kùzu DB를 삭제해야 할 때만 사용하세요. 실수로 fresh 실행을 했다면 autosave 파일이 남아 있는 동안 `ONTOFORGE_FRESH=1` 없이 다시 시작하면 복원할 수 있습니다.
-
-새 워크샵을 명시적으로 시작하려면 서버를 정상 기동한 뒤 UI의 reset 버튼을 누르거나 다음 명령을 호출하세요.
-
-```bash
-curl -X POST http://localhost:8000/reset
-```
-
-### 대화 스킬 (M1)
-좌측 패널에서 고객 답변을 받아적고 스킬을 실행하면 엔티티·관계가 자동으로
-그래프·시각화·문서에 반영된다. 추출 경로는 두 가지:
-- `ANTHROPIC_API_KEY` 환경변수가 있으면 **Claude API(Sonnet)** 로 추출
-- 없으면 **오프라인 규칙 기반 추출기**로 대체 (현장 데모 안정성)
-외부 Claude API 사용은 고객 데이터 처리·법무·보안 승인이 있는 경우에만 켠다.
-승인이 없거나 민감정보가 포함될 수 있으면 `ANTHROPIC_API_KEY`를 설정하지 말고
-오프라인 추출기로 진행하거나, 후속 구현 단계에서 Amazon Bedrock의 승인된 모델 경로를 사용한다.
-
-오프라인 추출기 도메인 커버리지: 교육 / 미디어·엔터테인먼트 / 게임 / 스포츠 /
-제조·하이테크 / 텔코 / 자동차 / 엔터프라이즈(복합기업·계열사 모델 포함).
-한국어 입력은 영문 PascalCase 엔티티명(`학생→Student`, `차량→Vehicle` 등)으로
-표준화된다. 추가 도메인은 `src/ontology_workshop/skills.py`의 `_ENTITY_HINTS`와
-`_mock_relations`에 1줄씩 추가.
-
-```bash
-export ANTHROPIC_API_KEY=<approved-api-key>   # 선택: API 추출 사용 시
-```
-
-## 아키텍처
-정식 구성도는 [`docs/architecture.puml`](./docs/architecture.puml)에 있으며,
-보안 설계는 [`docs/DESIGN.md`](./docs/DESIGN.md)와
-[`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md)에 정리되어 있다.
-
-```
-대화(Claude+스킬) → 오케스트레이터(FastAPI) → Kùzu (단일 진실원천, openCypher)
-                                          ├─ WebSocket → Cytoscape 시각화
-                                          ├─ Markdown 문서
-                                          └─ Neptune 익스포트
-```
-
-## 보안 구성
-OntoForge는 단일 운영자 로컬 워크샵 도구다. 고객 민감정보를 다룰 때는 아래 설정을 적용한다.
-
-1. 로컬 서버는 `127.0.0.1`에 바인딩하고, 공유 네트워크에 노출하지 않는다. Loopback 접속(`localhost`, `127.0.0.1`, `::1`)은 기본적으로 토큰 없이 허용된다.
-2. 기본 로컬 실행은 토큰 없이 시작한다.
-   ```bash
-   PYTHONPATH=src uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
-   # 브라우저: http://localhost:8000
-   ```
-3. 공유 네트워크에 노출하거나 localhost에서도 인증을 강제해야 하면 REST/WebSocket 접근 토큰을 설정한다.
-   ```bash
-   export ONTOFORGE_TOKEN="$(openssl rand -hex 24)"
-   export ONTOFORGE_REQUIRE_TOKEN=1  # localhost에서도 토큰을 강제할 때만 설정
-   PYTHONPATH=src uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
-   # 브라우저: http://localhost:8000/?token=$ONTOFORGE_TOKEN
-   # curl 사용 시: -H "X-OntoForge-Token: $ONTOFORGE_TOKEN"
-   ```
-4. TLS가 필요한 환경에서는 uvicorn SSL 옵션을 사용한다.
-   ```bash
-   uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000 \
-     --ssl-keyfile key.pem --ssl-certfile cert.pem
-   ```
-5. `workshop.kuzu`와 `exports/`는 FileVault/BitLocker/LUKS 같은 암호화 파일시스템 위에 둔다. Export 파일은 `./exports` 아래로만 생성되며 `0600` 권한으로 저장된다.
-6. `ANTHROPIC_API_KEY`는 환경변수나 승인된 secret manager에만 저장한다. 고객 개인정보·생체정보·규제 데이터는 마스킹하거나, 외부 LLM 호출을 끄고 오프라인 추출기로 진행한다.
-7. Amazon Neptune 적재 전에는 [`docs/NEPTUNE_SECURITY.md`](./docs/NEPTUNE_SECURITY.md)의 IAM, S3, VPC, KMS, 감사 로그 기준을 적용한다.
-
-데이터 분류와 보존/삭제 기준은 [`DATA_CLASSIFICATION.md`](./DATA_CLASSIFICATION.md), 보안 신고와 스캔 기록은 [`SECURITY.md`](./SECURITY.md)를 따른다.
-
-## 주요 제약
-- 내부 모델은 **property graph 단일**. T-Box/A-Box는 UI에서 개념 분리.
-- **OWL 추론은 범위 밖** — 필요 시 Cypher 규칙으로 흉내, 진짜 추론은 별도 트랙.
-- 로컬 openCypher → Neptune은 **대부분** 호환(100% 아님). 적재·튜닝은 기술 미팅 단계.
-- 워크샵은 고객 보안망 내 로컬 실행. 외부 통신은 선택적으로 설정한 Claude API 호출뿐이며, 키를 설정하지 않으면 오프라인 추출기로 동작한다.
-
-## 라이선스
-이 프로젝트는 Apache-2.0 라이선스로 제공된다. 자세한 내용은 [`LICENSE`](./LICENSE)를 참조한다.
+- [로컬 워크숍 실행](./docs/LOCAL_WORKSHOP.md)
+- [온톨로지 발견 워크숍](./docs/ONTOLOGY_DISCOVERY.md)
+- [모델 형식과 Cypher 내보내기](./viz-server/README.md)
+- [워크숍 진행 단계](./docs/AI_ODLC_WORKFLOW.md)
+- [애플리케이션 구조](./docs/DESIGN.md)
+- [워크숍 스킬](./skills/WORKSHOP_SKILLS.md)
+- [보안](./SECURITY.md)
+- [기여 방법](./CONTRIBUTING.md)

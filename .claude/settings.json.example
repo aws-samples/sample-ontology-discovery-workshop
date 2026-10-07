@@ -1,0 +1,11 @@
+{
+  "_comment_": "Ontology Discovery Workflow — 선택적 SessionStart hook 예제. 새 세션 시작 시 ontology-state.md와 audit.md 마지막 50줄을 컨텍스트에 자동 주입합니다. 이 hook은 필수가 아닙니다 — Resume Protocol(session-continuity.md §1)이 첫 액션으로 state를 읽기 때문에. 다만 hook이 있으면 LLM이 처음부터 컨텍스트를 갖고 시작하므로 응답 품질이 좋아집니다.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "if [ -f ./ontology-docs/ontology-state.md ]; then echo '=== ontology-state.md ===' && cat ./ontology-docs/ontology-state.md && echo '' && echo '=== audit.md (last 50 lines) ===' && tail -n 50 ./ontology-docs/audit.md; fi"
+      }
+    ]
+  }
+}

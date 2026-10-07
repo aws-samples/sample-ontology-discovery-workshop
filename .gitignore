@@ -11,3 +11,7 @@ exports/
 .claude/settings.local.json
 /temp/
 /answers/
+/output/
+/ontology-docs/
+/.playwright-cli/
+/workshop-prep/

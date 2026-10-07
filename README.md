@@ -1,230 +1,52 @@
-# OntoForge — Ontology Discovery Workshop Tool
+# OntoForge
 
-[English](./README.md) | [Korean](./README.ko.md) | [Japanese](./README.ja.md)
+[English](./README.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md)
 
-OntoForge is a local workshop tool for building and validating an ontology while talking with a customer. The agreed ontology can later be promoted to Amazon Neptune as the basis for a production graph data model.
+OntoForge is a local workshop tool for building a graph model from business conversations and existing data. Participants work with their own AI assistant and use the browser to review the model.
 
-## Demo
+## How the workshop works
 
-![OntoForge demo](./images/demo.gif)
+The AI assistant asks about business scenarios, identifies entities and relationships, and updates the model as participants review it. Existing schemas and sample records help connect the discussion to the data.
 
-## What It Does
+The browser shows the model and workshop records. Participants can inspect properties, follow relationships, and check whether the graph answers their business questions.
 
-1. Extracts entities, relations, and properties from workshop conversation and writes them to **Kuzu**, an embedded property graph database.
-2. Visualizes schema (**T-Box**) and instances (**A-Box**) as a live Cytoscape.js graph.
-3. Validates customer questions with **openCypher** so participants can see that the graph can answer real business questions.
-4. Generates ontology documentation in Markdown.
-5. Exports Amazon Neptune-ready artifacts: openCypher scripts and Bulk Loader CSV files.
-6. Exports RDF handoff artifacts: Turtle ontology/instances, JSON-LD, SHACL seed shapes, SPARQL seed queries, RDF mapping notes, and Neptune RDF follow-up notes.
-7. Runs a bounded, on-demand static validation of RDF/SPARQL/SHACL handoff artifacts without background monitoring.
+## What participants review
 
-See [`docs/DESIGN.md`](./docs/DESIGN.md), [`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md), [`docs/AI_ODLC_WORKFLOW.md`](./docs/AI_ODLC_WORKFLOW.md), and [`skills/WORKSHOP_SKILLS.md`](./skills/WORKSHOP_SKILLS.md) for design, security, AI-ODLC workflow, and workshop skill details.
+- T-box: entity types, relationship types, properties, and identifiers.
+- A-box: instances of those types and the relationships between them.
+- Cypher queries: questions expressed as graph queries, with their results.
+- Workshop records: decisions, source references, unresolved questions, and model changes.
 
-## Agent Plugin Marketplace
+Cypher is the language used to query and create property graphs. The graph model is the definition of the types, properties, and relationships. The workshop keeps that definition separate from instance data.
 
-This repository is a marketplace for the `ontoforge-workshop` plugin. Install it
-after checking out the branch that contains the marketplace files:
+## Workshop results
 
-```bash
-# Codex and Claude Code together, from the repository root
-./scripts/install-agent-plugins.sh
+The workshop produces a graph model, a record of the decisions behind it, and queries that participants used to check it. The local review app exports the model as JSON, PNG, SVG, and separate schema, data, or complete-model Cypher files.
 
-# Or install only one integration
-./scripts/install-codex-plugin.sh
-./scripts/install-claude-plugin.sh
-```
+## Start a workshop
 
-For installation directly from GitHub after these marketplace files are published:
+Install the local review app and check the environment:
 
 ```bash
-# Codex
-codex plugin marketplace add aws-samples/sample-ontology-discovery-workshop --ref v2
-codex plugin add ontoforge-workshop@ontoforge
-
-# Claude Code
-claude plugin marketplace add aws-samples/sample-ontology-discovery-workshop@v2 --scope user
-claude plugin install ontoforge-workshop@ontoforge --scope user
+python3 -m venv viz-server/.venv
+viz-server/.venv/bin/python -m pip install -r viz-server/requirements.txt
+bash scripts/test-viz.sh
+bash scripts/serve.sh
 ```
 
-Start a new agent session after installation. In Codex invoke `$run-workshop`; in
-Claude Code invoke `/ontoforge-workshop:start`. The plugin expects to run inside an
-OntoForge repository checkout; it does not install the Python application itself.
+Open the server URL, normally `http://127.0.0.1:5173`. In your local AI tool, use `/onto-discover` or ask to start ontology discovery. The AI writes the model and workshop records under `ontology-docs/`; the browser displays the published model.
 
-## Language Behavior
+For the example model and workshop-day commands, see [Local workshop](./docs/LOCAL_WORKSHOP.md).
 
-Repository documentation and agent skill files are written in English. During a workshop, the agent should detect the user's language from the operator/customer input and use that language for:
+The existing API workshop and `$run-workshop` plugin remain available. Their server-owned sessions are separate from this file-based workflow; startup commands are in the same guide.
 
-- direct replies to the user,
-- browser feed messages sent through `/narrate`,
-- human-readable `title` / `name` labels on graph instances,
-- report `descriptions`, `data_status` notes, and `action_items`,
-- the `/export/report` `lang` field when the language is supported (`ko`, `en`, `ja`).
+## Project documents
 
-Graph identifiers remain standardized in English regardless of workshop language: entity types use PascalCase, relation types use UPPER_SNAKE_CASE, and properties use Kuzu-compatible names and types. If the language is ambiguous, ask once at the start of the workshop. If the user changes language later, switch the workshop responses and generated human-readable text to the new language.
-
-## Workshop Operation
-
-- **Fresh start**: use the reset control in the UI or call `POST /reset`.
-- **Change mode**: click entity/relation chips in the sidebar to remove them. Related relation types are removed when an entity type is dropped.
-- **AI-ODLC workflow**: run a one-day AI-guided ontology discovery lifecycle with first-class stories, claims, events, competency questions, data sources, mappings, validation query seeds, RDF decisions, risks, action items, gate checks, and coverage.
-- **Interactive browser cockpit**: inspect predicate-level gate failures; navigate Stories, Events, Questions, Model, Data, Review, and Actions; make explicit evidence decisions; submit current-stage answers; and advance only to the next stage.
-- **Terminal cockpit**: use the same server-owned gates from a Textual TUI with seven evidence panels, gate drill-down, answer/advance/force controls, review decisions, and one explicit static RDF handoff check.
-- **RDF handoff**: call POST /export/rdf or generate a report to create Turtle, JSON-LD, SHACL, SPARQL, RDF mapping, and Neptune RDF follow-up files under exports/.
-- **Bounded validation**: run `POST /workflow/validate` or use the cockpit button for one on-demand static RDF/SPARQL/SHACL handoff check. It keeps only the latest result and never polls or retries automatically.
-
-Final handoff approval additionally requires the complete adjacent-stage transition
-history through `validation_handoff`. Supplying final-looking evidence or only a final
-stage label does not complete the workshop; a forced next-stage transition remains
-possible only with an audited reason.
-- **Deliverables**: generate report, snapshot, and Neptune export artifacts under `exports/`.
-  1. Workshop summary: entities, relations, and verified questions.
-  2. AWS architecture recommendation: Amazon Neptune sizing, data flow, compliance, and security controls.
-  3. Data readiness status: available, partially available, missing, derived, or unknown.
-  4. Technical handoff: confirmed schema, export guidance, mapping actions, validation points, and open issues.
-  5. Formats: Markdown, HTML, PDF when WeasyPrint is available, and DOCX.
-
-## Query Target
-
-The local workshop runs openCypher against the embedded Kuzu graph, visualizes the result in Cytoscape, and records successful query evidence against workflow validation query seeds. Live remote Amazon Neptune queries are out of scope for this sample; the current Neptune path is export and handoff notes only.
-
-Only a successful query whose question and normalized openCypher text exactly match a
-stored high-priority competency-query seed, returns MATCH-bound variables for every
-expected answer-shape label in one connected relationship pattern, and has a current query-evidence fingerprint counts toward
-workflow handoff. That fingerprint is independent of RDF static-validation and handoff
-package fingerprints, so one kind of evidence cannot keep another kind current. Successful
-ad-hoc or disconnected Cartesian queries remain useful for exploration but do not open the handoff gate.
-
-`POST /workflow/validate` is narrower: it verifies required RDF artifacts, JSON-LD structure, read-only SPARQL seed syntax, and SHACL/T-Box structural coverage. It does not execute SPARQL or claim formal SHACL conformance. Results are written to `validation_report.json` and `validation_report.md`; relevant later changes mark the latest result `stale` without rerunning it. There is no scheduler, polling, background worker, or automatic retry.
-
-Only a current `pass` can satisfy a requested static-validation handoff check or
-resolve its prior failure action; `warning` remains non-approving evidence. Its RDF
-input fingerprint must match the RDF input fingerprint in the final package manifest,
-so changing the base IRI while packaging invalidates the earlier approval.
-
-## Quick Start
-
-### Windows (PowerShell)
-
-```powershell
-py -3.11 -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-$env:PYTHONPATH="src"
-uvicorn ontology_workshop.server:app --reload
-# Browser: http://localhost:8000
-```
-
-If WeasyPrint cannot run because GTK runtime libraries are missing, PDF generation is skipped and the other report formats still work. Use the HTML report and the browser's print-to-PDF flow if needed.
-
-### macOS / Linux
-
-```bash
-pip install -r requirements.txt
-
-# Seed demo data and print console output.
-PYTHONPATH=src python src/seed_demo.py
-
-# Workshop server with live visualization and skill panel.
-PYTHONPATH=src uvicorn ontology_workshop.server:app --reload
-# Browser: http://localhost:8000
-```
-
-In another terminal, start the optional terminal cockpit:
-
-```bash
-PYTHONPATH=src python -m ontology_workshop.tui --url http://127.0.0.1:8000
-```
-
-Set `ONTOFORGE_TOKEN` or pass `--token` when authentication is required. The TUI
-uses one WebSocket stream plus an explicit Refresh action; it does not poll,
-automatically reconnect, rerun reviews, or retry validation.
-
-## Persistence and Restore
-
-Workshop data is persisted in `workshop.kuzu` by default. Restart the server without `ONTOFORGE_FRESH=1` to continue the existing workshop:
-
-```bash
-PYTHONPATH=src uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
-```
-
-On a normal restart, OntoForge reloads:
-
-- graph schema and instance data from `workshop.kuzu`;
-- workshop feed and verified queries from `exports/session/workshop_snapshot.json`;
-- the latest graph state from the autosave snapshot if the Kuzu graph is empty.
-
-OntoForge writes the autosave snapshot after graph, narration, query, import, reset, or report changes. This means a workshop can usually be recovered by starting the server again with the normal command above.
-
-Use `ONTOFORGE_FRESH=1` only when you explicitly want to delete the local Kuzu database at startup. If a fresh start was used accidentally and the autosave file still exists, restart without `ONTOFORGE_FRESH=1`; the server can rebuild the graph from `exports/session/workshop_snapshot.json`.
-
-If you intentionally want a blank workshop, start the server normally and then use the UI reset button or call:
-
-```bash
-curl -X POST http://localhost:8000/reset
-```
-
-## Conversation Skill
-
-The agent, not the browser UI, is the source of truth for workshop extraction. When the operator provides customer answers, the agent should structure them into entity types, relation types, instances, edges, queries, and report descriptions, then apply them through the REST API.
-
-The browser panel also contains a lightweight extraction path for demos:
-
-- If `ANTHROPIC_API_KEY` is set, the browser-side skill endpoint can call Claude API for extraction.
-- If the key is not set, it falls back to an offline rule-based extractor.
-
-Enable external Claude API use only when customer data handling, legal, and security approval exists. If approval is missing or sensitive data may be present, do not set `ANTHROPIC_API_KEY`; use offline extraction or a future approved Amazon Bedrock path.
-
-```bash
-export ANTHROPIC_API_KEY=<approved-api-key>   # Optional: API extraction only.
-```
-
-## Architecture
-
-The formal architecture diagram is in [`docs/architecture.puml`](./docs/architecture.puml). Security design is documented in [`docs/DESIGN.md`](./docs/DESIGN.md) and [`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md).
-
-```text
-Conversation agent -> FastAPI orchestrator -> Kuzu (single source of truth, openCypher)
-                                           |-> WebSocket -> Cytoscape visualization
-                                           |-> Markdown documentation
-                                           |-> Amazon Neptune export
-```
-
-## Security Configuration
-
-OntoForge is designed as a single-operator local workshop tool. Apply the controls below when customer-sensitive data may be handled.
-
-1. Bind the local server to `127.0.0.1` and do not expose it to a shared network. Loopback access (`localhost`, `127.0.0.1`, `::1`) is allowed without a token by default.
-2. Start normal local workshops without a token.
-   ```bash
-   PYTHONPATH=src uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
-   # Browser: http://localhost:8000
-   ```
-3. If the server is exposed to a shared network, or if localhost must also be token-gated, set a REST/WebSocket access token.
-   ```bash
-   export ONTOFORGE_TOKEN="$(openssl rand -hex 24)"
-   export ONTOFORGE_REQUIRE_TOKEN=1  # Only when localhost must require the token.
-   PYTHONPATH=src uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000
-   # Browser: http://localhost:8000/?token=$ONTOFORGE_TOKEN
-   # curl: -H "X-OntoForge-Token: $ONTOFORGE_TOKEN"
-   ```
-4. Use uvicorn TLS options when TLS is required.
-   ```bash
-   uvicorn ontology_workshop.server:app --host 127.0.0.1 --port 8000 \
-     --ssl-keyfile key.pem --ssl-certfile cert.pem
-   ```
-5. Store `workshop.kuzu` and `exports/` on an encrypted filesystem such as FileVault, BitLocker, or LUKS. Export files are constrained to `./exports` and written with `0600` permissions.
-6. Store `ANTHROPIC_API_KEY` only in environment variables or an approved secret manager. Mask personal, biometric, regulated, or otherwise sensitive customer data before any external LLM call.
-7. Before loading data into Amazon Neptune, apply the IAM, S3, VPC, KMS, and audit logging guidance in [`docs/NEPTUNE_SECURITY.md`](./docs/NEPTUNE_SECURITY.md).
-
-Data classification and retention rules are in [`DATA_CLASSIFICATION.md`](./DATA_CLASSIFICATION.md). Security reporting and scan records are in [`SECURITY.md`](./SECURITY.md).
-
-## Constraints
-
-- The internal model is a single property graph. T-Box and A-Box are conceptual UI/documentation views.
-- OWL reasoning is out of scope. Use Cypher rules for lightweight workshop checks; use a separate track for formal reasoning.
-- Local openCypher is mostly compatible with Amazon Neptune openCypher, but not guaranteed to be 100% identical. Production loading and tuning belong in the technical handoff phase.
-- The workshop is intended to run locally inside the customer's controlled environment. External communication should be disabled unless explicitly approved.
-
-## License
-
-This project is licensed under Apache-2.0. See [`LICENSE`](./LICENSE) for details.
+- [Local workshop](./docs/LOCAL_WORKSHOP.md)
+- [Discovery workflow](./docs/ONTOLOGY_DISCOVERY.md)
+- [Model format and Cypher export](./viz-server/README.md)
+- [Workshop steps](./docs/AI_ODLC_WORKFLOW.md)
+- [Application structure](./docs/DESIGN.md)
+- [Workshop skills](./skills/WORKSHOP_SKILLS.md)
+- [Security](./SECURITY.md)
+- [Contributing](./CONTRIBUTING.md)

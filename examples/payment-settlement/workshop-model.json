@@ -1,0 +1,48 @@
+{
+  "metadata": {
+    "title": "결제 정산 · 예시 모델",
+    "phase": "05-ontology / 검토 중",
+    "depth": "comprehensive",
+    "demo": true,
+    "description": "검증용 가상 데이터입니다. 실제 사용자 데이터나 확정된 도메인 모델이 아닙니다."
+  },
+  "tbox": {
+    "entities": {
+      "Merchant": {"label": "가맹점", "primary_key": "merchant_id", "properties": {"merchant_id": "STRING", "name": "STRING", "region": "STRING"}, "bounded_context": "merchant", "personas": ["P-merchant"], "trace_links": ["story-001", "DDL.merchants"], "status": "candidate"},
+      "Payment": {"label": "결제", "primary_key": "payment_id", "properties": {"payment_id": "STRING", "amount": "DOUBLE", "status": {"type": "STRING", "enum": ["pending", "completed", "failed"]}}, "bounded_context": "payment", "personas": ["P-merchant", "P-ops"], "trace_links": ["story-001", "DDL.payment_transactions"], "status": "candidate"},
+      "Settlement": {"label": "정산", "primary_key": "settlement_id", "properties": {"settlement_id": "STRING", "total": "DOUBLE", "settled_at": "DATE"}, "bounded_context": "settlement", "personas": ["P-ops"], "trace_links": ["story-001", "DDL.settlements"], "status": "candidate"},
+      "Payout": {"label": "지급", "primary_key": "payout_id", "properties": {"payout_id": "STRING", "amount": "DOUBLE", "bank": "STRING"}, "bounded_context": "settlement", "personas": ["P-ops"], "trace_links": ["story-001", "DDL.payouts"], "terminal": true, "status": "candidate"},
+      "ReviewNote": {"label": "검토 메모", "primary_key": "note_id", "properties": {"note_id": "STRING", "note": "STRING"}, "bounded_context": "review", "trace_links": [], "status": "candidate", "description": "근거와 관계가 누락된 타입의 품질 경고를 확인하기 위한 예시입니다."}
+    },
+    "relations": {
+      "MAKES": {"label": "결제 발생", "src": "Merchant", "dst": "Payment", "cardinality": "1:N", "properties": {}, "trace_links": ["story-001"]},
+      "INCLUDED_IN": {"label": "정산에 포함", "src": "Payment", "dst": "Settlement", "cardinality": "N:1", "properties": {}, "trace_links": ["story-001"]},
+      "PAID_VIA": {"label": "지급 처리", "src": "Settlement", "dst": "Payout", "cardinality": "1:N", "properties": {"method": "STRING"}, "trace_links": ["story-001"]}
+    }
+  },
+  "snapshot": {
+    "nodes": [
+      {"data": {"id": "Merchant:m-001", "label": "북촌 서점", "etype": "Merchant", "props": {"merchant_id": "m-001", "name": "북촌 서점", "region": "서울"}, "trace_links": ["example:merchant-001"], "personas": ["P-merchant"], "phase_introduced": "05"}},
+      {"data": {"id": "Merchant:m-002", "label": "제주 로스터리", "etype": "Merchant", "props": {"merchant_id": "m-002", "name": "제주 로스터리", "region": "제주"}, "trace_links": ["example:merchant-002"], "personas": ["P-merchant"], "phase_introduced": "05"}},
+      {"data": {"id": "Payment:p-001", "label": "결제 48,000", "etype": "Payment", "props": {"payment_id": "p-001", "amount": 48000, "status": "completed"}, "trace_links": ["example:payment-001"], "personas": ["P-merchant"], "phase_introduced": "05"}},
+      {"data": {"id": "Payment:p-002", "label": "결제 72,000", "etype": "Payment", "props": {"payment_id": "p-002", "amount": 72000, "status": "completed"}, "trace_links": ["example:payment-002"], "personas": ["P-merchant"], "phase_introduced": "05"}},
+      {"data": {"id": "Payment:p-003", "label": "결제 36,000", "etype": "Payment", "props": {"payment_id": "p-003", "amount": 36000, "status": "completed"}, "trace_links": ["example:payment-003"], "personas": ["P-merchant"], "phase_introduced": "05"}},
+      {"data": {"id": "Settlement:s-001", "label": "10/07 정산", "etype": "Settlement", "props": {"settlement_id": "s-001", "total": 156000, "settled_at": "2026-10-07"}, "trace_links": ["example:settlement-001"], "personas": ["P-ops"], "phase_introduced": "05"}},
+      {"data": {"id": "Payout:out-001", "label": "가맹점 지급", "etype": "Payout", "props": {"payout_id": "out-001", "amount": 156000, "bank": "예시 은행"}, "trace_links": ["example:payout-001"], "personas": ["P-ops"], "terminal": true, "phase_introduced": "05"}}
+    ],
+    "edges": [
+      {"data": {"id": "edge:merchant-1-payment-1", "source": "Merchant:m-001", "target": "Payment:p-001", "rtype": "MAKES", "label": "결제 발생", "trace_links": ["example:link-1"]}},
+      {"data": {"id": "edge:merchant-1-payment-2", "source": "Merchant:m-001", "target": "Payment:p-002", "rtype": "MAKES", "label": "결제 발생", "trace_links": ["example:link-2"]}},
+      {"data": {"id": "edge:merchant-2-payment-3", "source": "Merchant:m-002", "target": "Payment:p-003", "rtype": "MAKES", "label": "결제 발생", "trace_links": ["example:link-3"]}},
+      {"data": {"id": "edge:payment-1-settlement", "source": "Payment:p-001", "target": "Settlement:s-001", "rtype": "INCLUDED_IN", "label": "정산에 포함", "trace_links": ["example:link-4"]}},
+      {"data": {"id": "edge:payment-2-settlement", "source": "Payment:p-002", "target": "Settlement:s-001", "rtype": "INCLUDED_IN", "label": "정산에 포함", "trace_links": ["example:link-5"]}},
+      {"data": {"id": "edge:payment-3-settlement", "source": "Payment:p-003", "target": "Settlement:s-001", "rtype": "INCLUDED_IN", "label": "정산에 포함", "trace_links": ["example:link-6"]}},
+      {"data": {"id": "edge:settlement-payout", "source": "Settlement:s-001", "target": "Payout:out-001", "rtype": "PAID_VIA", "label": "지급 처리", "props": {"method": "bank_transfer"}, "trace_links": ["example:link-7"]}}
+    ]
+  },
+  "queries": [
+    {"title": "가맹점별 결제 금액", "cypher": "MATCH (merchant:Merchant)-[:MAKES]->(payment:Payment)\nRETURN merchant.name AS merchant, sum(payment.amount) AS total\nORDER BY total DESC"},
+    {"title": "결제부터 정산까지 실제 경로", "cypher": "MATCH path = (merchant:Merchant)-[:MAKES]->(payment:Payment)-[:INCLUDED_IN]->(settlement:Settlement)\nRETURN path LIMIT 25"},
+    {"title": "금액 조건으로 결제 조회", "cypher": "MATCH (payment:Payment)\nWHERE payment.amount >= $min_amount\nRETURN payment ORDER BY payment.amount DESC", "parameters": {"min_amount": 40000}}
+  ]
+}

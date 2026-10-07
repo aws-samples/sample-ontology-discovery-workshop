@@ -1,0 +1,118 @@
+async page => {
+  const baseUrl = new URL(page.url()).origin;
+  const artifactDirectory = 'output/viz-server-tests';
+  const checks = [];
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const check = (name, value) => {
+    if (!value) throw new Error(name);
+    checks.push(name);
+  };
+  const graphState = () => page.evaluate(() => {
+    const graph = document.getElementById('cy')._cyreg.cy;
+    return {nodes: graph.nodes().length, edges: graph.edges().length, visible: graph.nodes(':visible').map(node => node.id()), visibleEdges: graph.edges(':visible').map(edge => edge.id()), highlighted: graph.elements('.highlight').map(element => element.id()), zoom: graph.zoom()};
+  });
+  await page.goto(baseUrl);
+  await page.setViewportSize({width: 1600, height: 1000});
+  await page.waitForFunction(() => document.getElementById('cy')._cyreg?.cy?.nodes().length === 5);
+  await page.getByRole('button', {name: '전체 맞춤', exact: true}).click();
+  check('T-box 5 schema nodes and 3 relations', (await graphState()).nodes === 5 && (await graphState()).edges === 3);
+  check('left Cypher/history and right type/quality panels exist', await page.getByRole('heading', {name: 'Cypher & activity'}).isVisible() && await page.getByRole('heading', {name: 'Entity types'}).isVisible() && await page.getByRole('heading', {name: 'Relation types'}).isVisible());
+  check('Kuzu query enabled', await page.getByRole('button', {name: '쿼리 실행 ↗'}).isEnabled());
+  const queryResponse = page.waitForResponse(response => response.url().endsWith('/api/query') && response.request().method() === 'POST');
+  await page.getByRole('button', {name: '쿼리 실행 ↗'}).click();
+  const aggregate = await (await queryResponse).json();
+  check('real aggregate returns two merchants and sums', aggregate.rows[0][0] === '북촌 서점' && aggregate.rows[0][1] === 120000 && aggregate.count === 2);
+  await page.getByRole('button', {name: 'A-box 인스턴스', exact: true}).click();
+  check('A-box view switches to instances', (await graphState()).nodes === 7 && (await graphState()).edges === 7);
+  await page.getByRole('checkbox', {name: '가맹점', exact: true}).uncheck();
+  check('first entity uncheck is applied', (await graphState()).visible.length === 5 && !(await graphState()).visible.includes('Merchant:m-001'));
+  await page.getByRole('checkbox', {name: '가맹점', exact: true}).check();
+  check('entity recheck restores all nodes', (await graphState()).visible.length === 7);
+  for (const name of ['가맹점', '결제', '지급', '검토 메모', '정산']) await page.getByRole('checkbox', {name, exact: true}).uncheck();
+  check('deselect all entity types hides all nodes', (await graphState()).visible.length === 0);
+  await page.locator('#all-entities').click();
+  check('all entity button restores nodes', (await graphState()).visible.length === 7);
+  await page.getByRole('checkbox', {name: '정산에 포함', exact: true}).uncheck();
+  check('relation filter excludes only selected type', (await graphState()).visibleEdges.length === 4);
+  await page.getByRole('checkbox', {name: '정산에 포함', exact: true}).check();
+  await page.getByRole('searchbox', {name: '그래프 검색'}).fill('북촌');
+  check('search filters graph', (await graphState()).visible.length === 1);
+  await page.getByRole('searchbox', {name: '그래프 검색'}).fill('');
+  await page.locator('#filter-menu > summary').click();
+  await page.locator('#bc-filters input[value="payment"]').uncheck();
+  check('first context uncheck excludes payment instances', (await graphState()).visible.length === 4);
+  await page.locator('#reset-filters').click();
+  await page.locator('#persona-filters input[value="P-merchant"]').uncheck();
+  check('persona filter is initialized consistently', (await graphState()).visible.length === 2);
+  await page.locator('#persona-spotlight').check();
+  check('spotlight retains dimmed unrelated nodes', (await graphState()).visible.length === 7);
+  await page.locator('#phase-filters input[value="05"]').uncheck();
+  check('spotlight cannot override excluded phase', (await graphState()).visible.length === 0);
+  await page.locator('#reset-filters').click();
+  await page.locator('#persona-spotlight').uncheck();
+  await page.locator('#filter-menu > summary').click();
+  for (const layout of ['fcose', 'cose-bilkent', 'breadthfirst', 'concentric', 'cose']) {
+    await page.getByRole('combobox', {name: '레이아웃'}).selectOption(layout);
+    await page.waitForFunction(() => {
+      const graph = document.getElementById('cy')._cyreg.cy;
+      return graph.nodes().every(node => Number.isFinite(node.position().x) && Number.isFinite(node.position().y));
+    });
+    check('layout works: ' + layout, (await graphState()).nodes === 7);
+  }
+  await page.getByRole('button', {name: 'T-box 스키마', exact: true}).click();
+  await page.getByRole('button', {name: '고립 노드 ↗', exact: true}).click();
+  check('quality warning opens matching inspector', (await page.locator('#node-detail').innerText()).includes('ReviewNote'));
+  check('quality warning styles actual node', await page.evaluate(() => document.getElementById('cy')._cyreg.cy.getElementById('type:ReviewNote').hasClass('quality-warning')));
+  await page.getByRole('button', {name: '로컬 AI에 검토 요청', exact: true}).click();
+  await page.getByLabel('수정이 필요한 점과 근거').fill('브라우저 실행 검증: 이 타입의 원본 근거를 로컬 AI에서 확인해 주세요.');
+  const feedbackResponse = page.waitForResponse(response => response.url().endsWith('/feedback') && response.request().method() === 'POST');
+  await page.getByRole('button', {name: '검토 요청 기록', exact: true}).click();
+  check('feedback saved without modifying model', (await (await feedbackResponse).json()).ok === true);
+  await page.getByRole('button', {name: 'INCLUDED_IN 타입 상세', exact: true}).click();
+  check('relation inspector contains endpoints and cardinality', (await page.locator('#node-detail').innerText()).includes('N:1') && (await page.locator('#inspector-title').innerText()) === 'Relation inspector');
+  await page.getByRole('combobox', {name: '로컬 AI가 남긴 쿼리'}).selectOption('1');
+  const pathResponse = page.waitForResponse(response => response.url().endsWith('/api/query') && response.request().method() === 'POST');
+  await page.getByRole('button', {name: '쿼리 실행 ↗'}).click();
+  const paths = await (await pathResponse).json();
+  check('path query returns real paths', paths.count === 3 && paths.matched_ids.length === 12);
+  await page.getByRole('button', {name: '쿼리 결과를 그래프에서 보기', exact: true}).click();
+  check('query results focus real instance graph', (await graphState()).nodes === 7 && (await graphState()).highlighted.includes('Payment:p-001'));
+  await page.getByRole('button', {name: '강조 해제 ×', exact: true}).click();
+  await page.locator('.export-menu > summary').click();
+  for (const [buttonName, extension] of [['PNG', 'png'], ['SVG', 'svg'], ['모델 JSON', 'json']]) {
+    const downloadEvent = page.waitForEvent('download');
+    await page.getByRole('button', {name: buttonName, exact: true}).click();
+    const download = await downloadEvent;
+    await download.saveAs(artifactDirectory + '/browser-export.' + extension);
+    check('export ' + extension, (await download.failure()) === null);
+  }
+  await page.locator('.export-menu > summary').click();
+  await page.getByRole('button', {name: 'Cypher · 이력', exact: true}).click();
+  check('left panel toggles closed', !(await page.locator('#left-panel').isVisible()));
+  await page.getByRole('button', {name: 'Cypher · 이력', exact: true}).click();
+  await page.getByRole('button', {name: '모델 · 상세', exact: true}).click();
+  check('right panel toggles closed', !(await page.locator('#right-panel').isVisible()));
+  await page.getByRole('button', {name: '모델 · 상세', exact: true}).click();
+  await page.getByRole('button', {name: 'T-box 스키마', exact: true}).click();
+  await page.getByRole('button', {name: '전체 맞춤', exact: true}).click();
+  await page.getByRole('button', {name: 'ReviewNote 타입 상세', exact: true}).click();
+  await page.getByRole('button', {name: '강조 해제 ×', exact: true}).click();
+  await page.locator('.right-scroll').evaluate(panel => { panel.scrollTop = 0; });
+  await page.waitForFunction(() => {
+    const graph = document.getElementById('cy')._cyreg.cy;
+    return !graph.animated() && !graph.nodes().some(node => node.animated());
+  });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  check('desktop has no horizontal overflow', await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth));
+  await page.screenshot({path: artifactDirectory + '/desktop.png', fullPage: true});
+  await page.setViewportSize({width: 390, height: 844});
+  await page.waitForFunction(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  check('mobile has no horizontal overflow', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth));
+  await page.screenshot({path: artifactDirectory + '/mobile.png', fullPage: true});
+  await page.setViewportSize({width: 1600, height: 1000});
+  check('no JavaScript runtime errors', errors.length === 0);
+  await page.evaluate(report => { window.browserVerification = report; }, {passed: checks.length, checks, errors});
+  return {passed: checks.length, checks, errors};
+}
