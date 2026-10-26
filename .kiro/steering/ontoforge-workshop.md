@@ -14,7 +14,7 @@ Apply these rules when the user asks for OntoForge, an ontology workshop, T-Box/
    - T-Box = schema/types: entity types and relation types.
    - A-Box = instances: instance nodes and instance edges.
    - UI labels should distinguish "entity type (T-Box)", "relation type (T-Box)", "instance node (A-Box)", and "instance edge (A-Box)" in the selected UI language.
-4. Follow the gate sequence in the skill: modeling -> Gate 1 query coverage -> Gate 2 data status -> Gate 3 data location -> architecture/export. Do not skip a gate because the graph looks plausible.
+4. Follow the gate sequence in the skill: modeling -> Gate 1 query coverage -> Gate 2 data status -> Gate 3 data location -> architecture/export -> deliverable verification -> graph evaluation (always LAST). Follow `.kiro/steering/ontoforge-evaluation.md` for `/ontoforge-evaluation`; it always uses `comprehensive`. Do not skip a gate because the graph looks plausible.
 5. Before final export, report the stage/gate checklist, customer question coverage, unresolved model/data gaps, and next actions. Write customer-facing responses, narrations, labels, and report free text in the user's selected language; pass `lang` to `/export/report` when `ko`, `en`, or `ja` is selected.
 6. Mask customer personal or sensitive data before sending it to external services. Use local/offline extraction unless third-party LLM use has explicit approval.
 7. For code changes, run at least `python -m compileall src`; for UI label or WebSocket changes, also verify the local page in a browser when practical.

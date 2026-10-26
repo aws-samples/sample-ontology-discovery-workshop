@@ -30,6 +30,10 @@ Finalize a workshop, verify gates, and generate report plus Neptune export artif
    - Neptune openCypher and bulk CSV paths from `/export/report`: `exports/report/neptune.cypher` and `exports/report/bulk/`
    - Neptune openCypher and bulk CSV paths from `/export/neptune`: `exports/neptune.cypher` and `exports/bulk/`
    - `/download/workshop.zip`
+7. As the final step, follow `.claude/commands/ontoforge-evaluation.md` to evaluate
+   the current workshop's final `workshop-model.json` with `comprehensive` depth.
+   Report the separate evaluation HTML path and findings. If the model is revised,
+   refresh its exports before rerunning evaluation last.
 
 ## Rules
 

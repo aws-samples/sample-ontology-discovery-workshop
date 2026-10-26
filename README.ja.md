@@ -40,6 +40,33 @@ bash scripts/serve.sh
 
 既存の API ワークショップと `$run-workshop` プラグインも残しています。サーバーが管理するセッションは、このファイルベースのワークフローとは別です。起動方法は同じ案内文書にあります。
 
+## モデルの評価
+
+ワークショップの後に、最終モデルを評価します。評価は `workshop-model.json` のスキーマ（T-box）を読み取り、データベースへの接続やモデルの変更は行いません。結果はモデルと同じフォルダーの `graph-evaluation-report.html` に保存され、報告書は韓国語で作成されます。
+
+ローカル AI で `/ontoforge-evaluation` を使うか、最終のグラフ評価を依頼します。Claude Code ではモデルのパスを渡せます。例: `/ontoforge-evaluation path/to/workshop-model.json`。ワークショップの外でも、グラフスキーマの評価や比較を依頼すれば同じスキルが動きます。エクスポートと成果物の確認が終わった最後に実行し、モデルを変更したら再実行します。
+
+報告書の内容です。
+
+- 構造の点検: 関係の制約、重複したり一つの名前が複数の意味で使われたりしている関係、同じ事実の二重表現、名前や列挙型の不一致
+- 定量指標: 属性の豊富さ、型の階層がある場合の関係の豊富さと継承の豊富さ、ドメイン情報を持たない関係の割合など
+- 意味の検討: ラベルの意味、状態や識別子をノードにするか属性にするか、不足している中間分類
+- 質問との対応: 回答できなかったゴールデン質問を原因別に分ける方法、質問候補をスキーマで表現できるかの静的な確認
+- 改善提案、グラフ DB の検討事項、データや顧客の確認が必要な未解決事項
+
+参考資料は原文を直接開いて確認した論文だけを載せ、確認できなかった項目は未確認と表示します。等級と重大度は評価者の判断です。
+
+構成は次のとおりです。
+
+- 手順、報告書の構成、スタイルは `.claude/skills/graph-evaluation/SKILL.md` にあります。コマンドファイル `.claude/commands/ontoforge-evaluation.md` と Kiro のステアリング `.kiro/steering/ontoforge-evaluation.md` は、このファイルを指す入口です。
+- `schema_metrics.py` はスキーマ指標を計算します。ラベル名はモデルごとに異なるため、モデルの汎用ラベルとハブを決めて `--generic`、`--hubs` で渡します。
+- `evaluate.py` は任意の静的チェックです。別ファイル `graph-evaluation-static-check.html` を作り、報告書の代わりにはなりません。
+
+```bash
+python3 .claude/skills/graph-evaluation/schema_metrics.py path/to/workshop-model.json \
+  --generic <汎用ラベル> --hubs <ハブラベル>
+```
+
 ## 関連文書
 
 - [ローカルワークショップ](./docs/LOCAL_WORKSHOP.md)
@@ -48,5 +75,6 @@ bash scripts/serve.sh
 - [ワークショップの手順](./docs/AI_ODLC_WORKFLOW.md)
 - [アプリケーションの構成](./docs/DESIGN.md)
 - [ワークショップスキル](./skills/WORKSHOP_SKILLS.md)
+- [グラフ評価スキル](./.claude/skills/graph-evaluation/SKILL.md)
 - [セキュリティ](./SECURITY.md)
 - [貢献方法](./CONTRIBUTING.md)

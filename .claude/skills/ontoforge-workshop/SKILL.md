@@ -264,6 +264,7 @@ The workshop is gate-based. Do not advance until the current gate is complete.
 ```text
 [A] Modeling -> Gate 1 Query Coverage -> Gate 2 Data Status
              -> Gate 3 Data Location -> [E] Architecture + Migration + Export
+             -> [F] Comprehensive Graph Evaluation (LAST)
 ```
 
 AI-ODLC v2 is the top-level workshop lifecycle:
@@ -369,6 +370,21 @@ Export:
 - Run `POST /export/report` with localized `descriptions`, `data_status`, and `action_items`.
 - Run `POST /export/neptune`.
 - Tell the operator where to find report, snapshot, ZIP, Neptune artifacts, and RDF/SHACL handoff artifacts.
+
+### F. Final Graph Evaluation — Always Last
+
+After all workshop stages, exports, and deliverable checks are complete, run
+`/ontoforge-evaluation` following the shared procedure in
+`.claude/skills/graph-evaluation/SKILL.md`.
+Use the current workshop's final `workshop-model.json`, never a demo substitute.
+Complete the full `comprehensive` schema evaluation: metrics, structural and semantic review,
+golden-question linkage, sources, recommendations, and all report sections/appendices.
+Write `graph-evaluation-report.html` beside the input without modifying it.
+The legacy `evaluate.py` output alone does not complete this workflow.
+Report the evaluation path and finding counts as the final workshop result.
+This static evaluation does not replace Gate 1 query verification or RDF validation.
+If the model changes afterward, refresh the deliverables and rerun evaluation last.
+The evaluation report is a separate artifact; do not claim it is already in the export ZIP.
 
 ## 6. Operating Principles
 
