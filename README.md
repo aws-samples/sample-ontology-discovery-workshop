@@ -40,6 +40,33 @@ For the example model and workshop-day commands, see [Local workshop](./docs/LOC
 
 The existing API workshop and `$run-workshop` plugin remain available. Their server-owned sessions are separate from this file-based workflow; startup commands are in the same guide.
 
+## Evaluate the model
+
+After the workshop, evaluate the final model. The evaluation reads the schema (T-box) in `workshop-model.json`. It does not connect to a database or change the model. It writes `graph-evaluation-report.html` next to the model, and the report is written in Korean.
+
+In your local AI tool, use `/ontoforge-evaluation` or ask for the final graph evaluation. In Claude Code you can pass the model path, for example `/ontoforge-evaluation path/to/workshop-model.json`. The same skill also runs when you ask it to evaluate or compare graph schemas outside a workshop. Run it last, after the exports and deliverable checks, and run it again if the model changes.
+
+The report covers:
+
+- Structure checks: relationship constraints, overlapping or overloaded relationship names, the same fact stored twice, and inconsistent names or enumerations.
+- Quantitative metrics: attribute richness, relationship and inheritance richness when the model defines a type hierarchy, and measures such as the share of relationships that carry no domain information.
+- Semantic review: what the labels mean, whether states and identifiers should be nodes or properties, and missing intermediate classes.
+- Question linkage: how to split failed golden questions by cause, and a static check of whether the schema can express candidate questions.
+- Recommendations, graph database considerations, and open items that need data or customer confirmation.
+
+References are limited to papers whose originals were opened, and anything that could not be verified is marked as unverified. Grades and severities are the evaluator's judgment.
+
+How it is organized:
+
+- The procedure, report structure, and style are defined in `.claude/skills/graph-evaluation/SKILL.md`. The command `.claude/commands/ontoforge-evaluation.md` and the Kiro steering file `.kiro/steering/ontoforge-evaluation.md` only point to it.
+- `schema_metrics.py` computes the schema metrics. Label names differ between models, so choose the model's generic labels and hubs and pass them with `--generic` and `--hubs`.
+- `evaluate.py` is an optional static check. It writes a separate `graph-evaluation-static-check.html` and does not replace the report.
+
+```bash
+python3 .claude/skills/graph-evaluation/schema_metrics.py path/to/workshop-model.json \
+  --generic <generic labels> --hubs <hub labels>
+```
+
 ## Project documents
 
 - [Local workshop](./docs/LOCAL_WORKSHOP.md)
@@ -48,5 +75,6 @@ The existing API workshop and `$run-workshop` plugin remain available. Their ser
 - [Workshop steps](./docs/AI_ODLC_WORKFLOW.md)
 - [Application structure](./docs/DESIGN.md)
 - [Workshop skills](./skills/WORKSHOP_SKILLS.md)
+- [Graph evaluation skill](./.claude/skills/graph-evaluation/SKILL.md)
 - [Security](./SECURITY.md)
 - [Contributing](./CONTRIBUTING.md)
